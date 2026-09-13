@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { renderMarkdown, sessionStorageAdapter } from '../src/security.js';
-test('Markdown strips active content and network tracking while preserving formatting',()=>{
+test('Markdown strips active content and permits safe images and checklists',()=>{
  const {window}=new JSDOM('');
- const html=renderMarkdown('# Hello\n\n**bold**\n\n<script>alert(1)</script><img src="https://tracker.test/x" onerror="alert(1)"><iframe src="https://evil.test"></iframe><a href="javascript:alert(1)">bad</a><svg onload="alert(1)"></svg><form><input autofocus onfocus="alert(1)"></form>',window);
+ const html=renderMarkdown('# Hello\n\n**bold**\n\n- [ ] item\n\n![local](/image/example.png)\n\n<script>alert(1)</script><img src="https://images.test/x.png" onerror="alert(1)"><iframe src="https://evil.test"></iframe><a href="javascript:alert(1)">bad</a><svg onload="alert(1)"></svg><form><input autofocus onfocus="alert(1)"></form>',window);
  assert.match(html,/<h1>Hello<\/h1>/);assert.match(html,/<strong>bold<\/strong>/);
- assert.doesNotMatch(html,/<script|<img|<iframe|<svg|<form|<input|onerror|onload|javascript:/i);
+ assert.match(html,/<img src="https:\/\/images\.test\/x\.png"/);
+ assert.match(html,/<img src="\/image\/example\.png"/);
+ assert.match(html,/<input disabled="" type="checkbox">/);
+ assert.doesNotMatch(html,/<script|<iframe|<svg|<form|onerror|onload|javascript:/i);
 });
 test('Remember me controls persistence, logout removes tokens but preserves notes',()=>{
  const {window}=new JSDOM('',{url:'https://example.test'});

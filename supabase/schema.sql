@@ -16,6 +16,12 @@ create table public.todos (
  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
  title text not null check(char_length(trim(title)) between 1 and 500),
  done boolean not null default false,
+ description text not null default '' check(char_length(description) <= 5000000),
+ list_name text not null default 'Входящие' check(char_length(list_name) between 1 and 80),
+ due_date date,
+ priority integer not null default 0 check(priority between 0 and 2),
+ note_id uuid,
+ tags text[] not null default '{}' check(cardinality(tags) <= 20),
  created_at timestamptz not null default now()
 );
 alter table public.todos enable row level security;
