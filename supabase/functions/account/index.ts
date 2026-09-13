@@ -17,9 +17,9 @@ Deno.serve(async (req) => {
   const raw = await req.text();
   if (raw.length > 4096) return reply(413, {error:'Слишком большой запрос'});
   const body = JSON.parse(raw);
-  const passwordValid = (p: unknown) => typeof p === 'string' && p.length >= 12 && p.length <= 128;
+  const passwordValid = (p: unknown) => typeof p === 'string' && p.length >= 9 && p.length <= 128;
   if(body.action === 'password') {
-   if(!passwordValid(body.password)) return reply(400,{error:'Пароль: от 12 до 128 символов'});
+   if(!passwordValid(body.password)) return reply(400,{error:'Пароль: от 9 до 128 символов'});
    // Reauthenticate with the current password, including temporary first-login passwords.
    const verifier = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {auth:{persistSession:false,autoRefreshToken:false}});
    const {data: verified,error} = await verifier.auth.signInWithPassword({email:user.email!,password:body.currentPassword || ''});
@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
    return reply(200,{users:data});
   }
   if(body.action === 'create') {
-   if(typeof body.username !== 'string' || !/^[a-z0-9_]{3,32}$/.test(body.username) || !passwordValid(body.password)) return reply(400,{error:'Логин: 3–32 символа a–z, 0–9, _. Пароль: 12–128 символов'});
+   if(typeof body.username !== 'string' || !/^[a-z0-9_]{3,32}$/.test(body.username) || !passwordValid(body.password)) return reply(400,{error:'Логин: 3–32 символа a–z, 0–9, _. Пароль: 9–128 символов'});
    const {data,error} = await admin.auth.admin.createUser({email:`${body.username}@users.helper.invalid`,password:body.password,email_confirm:true});
    if(error || !data.user) return reply(400,{error:'Не удалось создать аккаунт. Проверьте логин и пароль'});
    const saved = await admin.from('profiles').insert({id:data.user.id,username:body.username});
