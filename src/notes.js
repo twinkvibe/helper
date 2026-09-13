@@ -20,6 +20,15 @@ export function loadNotes(storage, userId) {
  return data;
 }
 export function saveNotes(storage, userId, data) { storage.setItem(`helper:notes:${userId}`,JSON.stringify(data)); }
+export function parseTaskQuery(query = '') {
+ const tags=tagsIn(` ${query}`);
+ const text=query.replace(/(?:^|\s)#[\p{L}\p{N}_-]{1,40}/gu,' ').replace(/\s+/g,' ').trim().toLowerCase();
+ return {text,tags};
+}
 export function filterTasks(tasks,{status='all',list='',tag='',query='',todayOnly=false,today=''}={}) {
- return tasks.filter(t=>(status==='all'||t.done===(status==='done')) && (!list||t.list_name===list) && (!tag||[...(t.tags||[]),...tagsIn(t.description)].includes(tag)) && (!query||`${t.title} ${t.description||''}`.toLowerCase().includes(query.toLowerCase())) && (!todayOnly||(!t.done && t.due_date && t.due_date<=today))).sort((a,b)=>Number(a.done)-Number(b.done)||(b.priority||0)-(a.priority||0)||(a.due_date||'9999').localeCompare(b.due_date||'9999'));
+ const parsed=parseTaskQuery(query), explicitTags=[tag,...parsed.tags].filter(Boolean);
+ return tasks.filter(t=>{
+  const taskTags=[...(t.tags||[]),...tagsIn(t.description)];
+  return (status==='all'||t.done===(status==='done')) && (!list||t.list_name===list) && explicitTags.every(value=>taskTags.includes(value)) && (!parsed.text||`${t.title} ${t.description||''} ${t.list_name||''}`.toLowerCase().includes(parsed.text)) && (!todayOnly||(!t.done && t.due_date && t.due_date<=today));
+ }).sort((a,b)=>Number(a.done)-Number(b.done)||(b.priority||0)-(a.priority||0)||(a.due_date||'9999').localeCompare(b.due_date||'9999'));
 }

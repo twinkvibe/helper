@@ -8,8 +8,17 @@ test('Markdown strips active content and permits safe images and checklists',()=
  assert.match(html,/<h1>Hello<\/h1>/);assert.match(html,/<strong>bold<\/strong>/);
  assert.match(html,/<img src="https:\/\/images\.test\/x\.png"/);
  assert.match(html,/<img src="\/image\/example\.png"/);
- assert.match(html,/<input disabled="" type="checkbox">/);
+ assert.match(html,/<input type="checkbox">/);
+ assert.doesNotMatch(html,/<input[^>]*disabled/);
  assert.doesNotMatch(html,/<script|<iframe|<svg|<form|onerror|onload|javascript:/i);
+});
+test('CommonMark emphasis stays semantic and image dimensions are applied',()=>{
+ const {window}=new JSDOM('');
+ const html=renderMarkdown('_You **can** combine them_\n\n![Фото|320x180](https://images.test/photo.png)',window);
+ assert.match(html,/<em>You <strong>can<\/strong> combine them<\/em>/);
+ assert.doesNotMatch(html,/<a[^>]*>You/);
+ assert.match(html,/<img[^>]*width="320"[^>]*height="180"/);
+ assert.match(html,/alt="Фото"/);
 });
 test('Markdown keeps emphasis semantics',()=>{
   const {window}=new JSDOM('');

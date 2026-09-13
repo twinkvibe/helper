@@ -482,6 +482,18 @@ nav {
   color: #b2c0b0;
 }
 
+.account #logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav .ui-icon,
+.account .ui-icon {
+  width: 18px;
+  height: 18px;
+}
+
 .content {
   width: min(100%, 1180px);
   margin: 0 auto;
@@ -694,13 +706,13 @@ header {
     display: flex;
     order: 3;
     margin-inline: -4px;
-    overflow-x: auto;
-    scrollbar-width: thin;
+    flex-wrap: wrap;
+    overflow: visible;
   }
 
   .nav {
-    width: max-content;
-    flex: 0 0 auto;
+    width: auto;
+    flex: 1 1 130px;
     grid-template-columns: 23px auto;
     padding: 8px 12px;
     white-space: nowrap;

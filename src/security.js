@@ -6,17 +6,24 @@ export function renderMarkdown(source, windowObject = window) {
     if (node.tagName === 'IMG') {
       const src = node.getAttribute('src') || '';
       if (!/^https:\/\//i.test(src) && !/^(\.\.?\/|\/(?!\/))/.test(src) && !/^data:image\/(png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(src)) node.removeAttribute('src');
+      const alt = node.getAttribute('alt') || '';
+      const size = alt.match(/(?:^|\|)(\d{1,4})(?:x(\d{1,4}))?$/);
+      if (size) {
+        node.setAttribute('width', String(Math.min(Number(size[1]), 1600)));
+        if (size[2]) node.setAttribute('height', String(Math.min(Number(size[2]), 1200)));
+        node.setAttribute('alt', alt.slice(0, size.index).replace(/\|$/, ''));
+      }
       node.setAttribute('loading', 'lazy');
       node.setAttribute('referrerpolicy', 'no-referrer');
     }
     if (node.tagName === 'INPUT') {
       if (node.getAttribute('type') !== 'checkbox') { node.remove(); return; }
-      node.setAttribute('disabled', '');
+      node.removeAttribute('disabled');
     }
   });
   return purifier.sanitize(marked.parse(source, { async: false }), {
     ALLOWED_TAGS: ['p','br','hr','h1','h2','h3','h4','h5','h6','strong','em','del','blockquote','ul','ol','li','pre','code','a','table','thead','tbody','tr','th','td','img','input'],
-    ALLOWED_ATTR: ['href','title','src','alt','type','checked','disabled'],
+    ALLOWED_ATTR: ['href','title','src','alt','width','height','type','checked','disabled'],
     ALLOW_DATA_ATTR: false,
   });
 }

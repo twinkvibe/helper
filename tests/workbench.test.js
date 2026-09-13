@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { filterTasks, loadNotes, saveNotes, tagsIn } from '../src/notes.js';
+import { filterTasks, loadNotes, parseTaskQuery, saveNotes, tagsIn } from '../src/notes.js';
 import { attachEditor, markdownBlocks } from '../src/editor.js';
 import { mountWorkbench } from '../src/workbench.js';
 
@@ -14,6 +14,8 @@ test('Tasks sort into open and completed groups and share Unicode tags', () => {
   assert.deepEqual(filterTasks(tasks).map(t=>t.id),['high','low','done']);
   assert.deepEqual(filterTasks(tasks,{status:'done'}).map(t=>t.id),['done']);
   assert.deepEqual(filterTasks(tasks,{status:'open',tag:'проект'}).map(t=>t.id),['high','low']);
+  assert.deepEqual(filterTasks(tasks,{query:'сейчас #проект'}).map(t=>t.id),['high']);
+  assert.deepEqual(parseTaskQuery('  срочно #Проект #дом  '),{text:'срочно',tags:['проект','дом']});
   assert.deepEqual(tagsIn('Текст #Проект #идея #Проект'),['проект','идея']);
 });
 
@@ -45,6 +47,25 @@ test('Editor resolves local attachment references without exposing data URLs', (
   attachEditor(document.querySelector('#editor'),{value:source,imageStore:{get:id=>id==='image-1'?'data:image/png;base64,AAAA':undefined}});
   assert.equal(document.querySelector('.preview img').getAttribute('src'),'data:image/png;base64,AAAA');
   assert.equal(document.querySelector('textarea').value,source);
+  dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
+});
+
+test('Single-window editor renders checklist items, toggles them, and supports undo and redo', () => {
+  const dom=new JSDOM('<section id="editor"></section>',{url:'https://example.test/helper/'});
+  const names=['window','document'];
+  const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
+  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
+  const host=document.querySelector('#editor');
+  attachEditor(host,{value:'- [ ] Сделать дело'});
+  assert.equal(host.querySelector('.live-editor').hidden,false);
+  const checkbox=host.querySelector('.live-block input[type="checkbox"]');
+  assert.ok(checkbox);
+  checkbox.click();
+  assert.equal(host.querySelector('textarea').value,'- [x] Сделать дело');
+  host.querySelector('textarea').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true}));
+  assert.equal(host.querySelector('textarea').value,'- [ ] Сделать дело');
+  host.querySelector('textarea').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'z',ctrlKey:true,shiftKey:true,bubbles:true}));
+  assert.equal(host.querySelector('textarea').value,'- [x] Сделать дело');
   dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
 });
 

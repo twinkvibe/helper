@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { sessionStorageAdapter } from './security.js';
 import { mountWorkbench } from './workbench.js';
+import { icon } from './icons.js';
 import './style.css';
 import './workbench.css';
 const root = document.querySelector('#app');
@@ -78,7 +79,8 @@ function shell() {
  if(cleanupView && cleanupView() === false) return;
  cleanupView = null;
  generation++;
- root.innerHTML = `<div class="workspace"><aside><a class="brand" href="./">h<span>elper</span><i>✳</i></a><nav>${[['todos','☑','Задачи'],['markdown','✎','Заметки'],['settings','⚙','Аккаунт'],...(profile.role==='admin'?[['admin','♙','Админка']]:[])].map(([id,icon,title])=>`<button data-page="${id}" class="nav ${page===id?'active':''}" ${profile.must_change_password && id!=='settings'?'disabled':''}><span>${icon}</span>${title}</button>`).join('')}</nav><div class="account"><strong>${escape(profile.username)}</strong><small>${profile.role==='admin'?'Администратор':'Участник'}</small><button id="logout" class="quiet">Выйти ↗</button></div></aside><main class="content"><p id="notice" class="notice" role="status" aria-live="polite"></p><section id="view"></section></main></div>`;
+ root.innerHTML = `<div class="workspace"><aside><a class="brand" href="./">h<span>elper</span><i>✳</i></a><nav>${[['todos','tasks','Задачи'],['markdown','note','Заметки'],['settings','settings','Аккаунт'],...(profile.role==='admin'?[['admin','users','Админка']]:[])].map(([id,iconName,title])=>`<button data-page="${id}" class="nav ${page===id?'active':''}" ${profile.must_change_password && id!=='settings'?'disabled':''}><span data-nav-icon="${iconName}"></span>${title}</button>`).join('')}</nav><div class="account"><strong>${escape(profile.username)}</strong><small>${profile.role==='admin'?'Администратор':'Участник'}</small><button id="logout" class="quiet"><span data-nav-icon="logout"></span>Выйти</button></div></aside><main class="content"><p id="notice" class="notice" role="status" aria-live="polite"></p><section id="view"></section></main></div>`;
+ document.querySelectorAll('[data-nav-icon]').forEach(slot=>slot.replaceChildren(icon(slot.dataset.navIcon)));
  document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{const next=b.dataset.page;if(next===page)return;if(cleanupView&&cleanupView()===false)return;cleanupView=null;page=next;shell();});
  $('logout').onclick=async()=>{if(cleanupView&&cleanupView()===false)return;cleanupView=null;const {error}=await client.auth.signOut({scope:'local'});if(error){shell();notice('Не удалось выйти. Повтори попытку.',true);return;}login();};
  ({todos,markdown,settings,admin:adminPage})[page]();
