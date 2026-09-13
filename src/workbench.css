@@ -368,8 +368,8 @@
   min-height: 56px;
   margin-top: 14px;
   padding: 7px;
-  overflow-x: auto;
-  flex-wrap: nowrap;
+  overflow: visible;
+  flex-wrap: wrap;
   border: 1px solid var(--line);
   border-bottom: 0;
   border-radius: 8px 8px 0 0;
@@ -385,6 +385,12 @@
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 12px;
   white-space: nowrap;
+}
+
+.toolbar-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
 }
 
 .format-bar .quiet:hover {
@@ -423,6 +429,7 @@
   background: #101612;
   caret-color: var(--accent);
   color: #d8e3d7;
+  overflow-wrap: anywhere;
   resize: vertical;
   font: 14px/1.8 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
@@ -432,7 +439,8 @@
   min-height: 460px;
   padding: clamp(21px, 3vw, 36px);
   overflow-wrap: anywhere;
-  overflow-x: auto;
+  overflow-x: hidden;
+  word-break: normal;
   background: var(--paper);
   color: var(--paper-ink);
 }
@@ -472,21 +480,34 @@
   font-weight: 620;
 }
 
+.preview em {
+  color: inherit;
+  font-style: italic;
+}
+
+.preview strong {
+  color: inherit;
+  font-weight: 750;
+}
+
 .preview code {
   padding: 2px 5px;
   border-radius: 3px;
-  background: #d1d9ca;
+  background: #2a352d;
+  color: #dce8d9;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 0.9em;
 }
 
 .preview pre {
-  overflow: auto;
+  overflow: hidden;
+  overflow-wrap: anywhere;
   padding: 16px;
   border-left: 3px solid #799c3d;
   border-radius: 5px;
   background: #172019;
   color: #e0eadc;
+  white-space: pre-wrap;
 }
 
 .preview pre code {
@@ -500,7 +521,7 @@
   margin-left: 0;
   padding-left: 16px;
   border-left: 3px solid #91b34e;
-  color: #4c5c4b;
+  color: #b4c2b4;
 }
 
 .preview ul,
@@ -509,21 +530,21 @@
 }
 
 .preview table {
-  display: block;
-  width: max-content;
+  width: 100%;
   max-width: 100%;
-  overflow: auto;
   border-collapse: collapse;
+  table-layout: fixed;
+  word-break: break-word;
 }
 
 .preview th,
 .preview td {
   padding: 8px 10px;
-  border: 1px solid #acb9a8;
+  border: 1px solid #465447;
 }
 
 .preview th {
-  background: #d4ddcf;
+  background: #263229;
   text-align: left;
 }
 
@@ -548,7 +569,7 @@
 .mermaid-diagram {
   margin: 18px 0;
   padding: 12px;
-  overflow: auto;
+  overflow: hidden;
   border-radius: 5px;
   background: #f7f8f1;
 }
@@ -567,7 +588,7 @@
 .live-editor {
   min-height: 460px;
   padding: 12px;
-  overflow: auto;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 0 0 8px 8px;
   background: var(--paper);
@@ -598,6 +619,8 @@
   border-radius: 4px;
   background: #101612;
   color: #d8e3d7;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
   font: 14px/1.75 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 

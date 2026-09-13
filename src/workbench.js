@@ -73,8 +73,20 @@ export function mountWorkbench(host,{client,userId,initial='todos',notice,requir
   form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('[type=submit]');b.disabled=true;try{const title=form.elements.title.value.trim(),list=form.elements.list_name.value.trim();if(!title||!list)throw new Error('Заполни название и список.');if(md.getValue().length>5000000)throw new Error('Описание слишком большое (максимум 5 млн символов).');await changeTask(task.id,{title,list_name:list,due_date:form.elements.due_date.value||null,priority:Number(form.elements.priority.value),tags:tagsIn(form.elements.tags.value),note_id:form.elements.note_id.value||null,description:md.getValue()});taskDirty=false;dialog.close();dialog.remove();selectedTask=null;if(alive)renderTasks();}catch(error){dialog.querySelector('.detail-status').textContent=error.message;}finally{b.disabled=false;}};
   host.append(dialog);dialog.showModal();
  }
- function newNote(title='Без названия',body='') {const note={id:crypto.randomUUID(),title,body,deleted:false};notebook.notes.push(note);notebook.selected=note.id;save();return note;}
- function exportAll(){download('helper-notes.json',JSON.stringify(notebook,null,2),'application/json');}
+  function newNote(title='Без названия',body='') {const note={id:crypto.randomUUID(),title,body,deleted:false,attachments:[]};notebook.notes.push(note);notebook.selected=note.id;save();return note;}
+  function migrateEmbeddedImages(note){
+   let changed=false;
+   const body=note.body.replace(/!\[([^\]]*)\]\((data:image\/(?:png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+)\)/gi,(match,alt,data)=>{
+    note.attachments||(note.attachments=[]);
+    const existing=note.attachments.find(image=>image.data===data);
+    const id=existing?.id||crypto.randomUUID();
+    if(!existing)note.attachments.push({id,name:'изображение',type:data.slice(5,data.indexOf(';')),data});
+    changed=true;return `![${alt}](attachment://${id})`;
+   });
+   if(changed)note.body=body;
+   return changed;
+  }
+  function exportAll(){download('helper-notes.json',JSON.stringify(notebook,null,2),'application/json');}
  function renderNotes(){
   const area=ensureArea();if(storageError){area.append(el('p','error','Не удалось открыть локальные заметки. Исходные данные не изменены.'));return;}
   const actions=el('div','note-actions');actions.append(button('+ Заметка',()=>{trash=false;newNote();renderNotes();},'primary'),button('Импорт .md / .json',()=>importFile.click()),button('Экспорт всех',exportAll),button(trash?'Все заметки':'Корзина',()=>{trash=!trash;renderNotes();}));
@@ -85,13 +97,15 @@ export function mountWorkbench(host,{client,userId,initial='todos',notice,requir
   search.oninput=()=>{noteSearch=search.value;listNotes();};listNotes();
   let note=notebook.notes.find(n=>n.id===notebook.selected&&Boolean(n.deleted)===trash);
   if(!note){note=notebook.notes.find(n=>Boolean(n.deleted)===trash);if(note){notebook.selected=note.id;save();}}
-  if(!note){main.append(el('p','empty',trash?'Корзина пуста.':'Создай заметку или импортируй Markdown-файл.'));return;}
-  if(trash){main.append(el('h2','',note.title),button('Восстановить',()=>{note.deleted=false;save();trash=false;renderNotes();},'primary'));return;}
-  const title=el('input');title.className='note-title';title.value=note.title;title.maxLength=150;title.setAttribute('aria-label','Название заметки');title.oninput=()=>{note.title=title.value;save();listNotes();};main.append(title);
+   if(!note){main.append(el('p','empty',trash?'Корзина пуста.':'Создай заметку или импортируй Markdown-файл.'));return;}
+   if(trash){main.append(el('h2','',note.title),button('Восстановить',()=>{note.deleted=false;save();trash=false;renderNotes();},'primary'));return;}
+   if(migrateEmbeddedImages(note))save();
+   const title=el('input');title.className='note-title';title.value=note.title;title.maxLength=150;title.setAttribute('aria-label','Название заметки');title.oninput=()=>{note.title=title.value;save();listNotes();};main.append(title);
   const tools=el('div','note-actions');tools.append(button('Скачать .md',()=>download((note.title||'Заметка').replace(/[/\\]/g,'_')+'.md',note.body)),button('Ссылка',()=>{const link=new URL(location.href);link.hash=`note=${note.id}`;navigator.clipboard?.writeText(link.href).then(()=>notice('Ссылка скопирована. Она открывает заметку только в браузере с её локальными данными.')).catch(()=>notice(link.href));}),button('В корзину',()=>{note.deleted=true;save();renderNotes();}));main.append(tools);
   const insert=el('select');insert.setAttribute('aria-label','Вставить ссылку на заметку');insert.append(new window.Option('Ссылка на заметку…',''));activeNotes().filter(n=>n.id!==note.id).forEach(n=>insert.append(new window.Option(n.title,n.id)));insert.onchange=()=>{const n=activeNotes().find(n=>n.id===insert.value);if(n)editor.insertLink(n.title,n.id);insert.value='';};tools.append(insert);
-  const md=el('div');main.append(md);const saved=el('p','muted');saved.id='saved';saved.textContent=unsaved?'Не сохранено':'Хранится в этом браузере';
-  editor=attachEditor(md,{value:note.body,onChange:body=>{note.body=body;saved.textContent=save()?'Сохранено в браузере':'Не сохранено — экспортируй заметки';renderRelated();},onLink:openNote,onError:m=>notice(m,true)});
+   const md=el('div');main.append(md);const saved=el('p','muted');saved.id='saved';saved.textContent=unsaved?'Не сохранено':'Хранится в этом браузере';
+   const imageStore={get:id=>note.attachments?.find(image=>image.id===id)?.data,add:image=>{const item={id:crypto.randomUUID(),name:image.name,type:image.type,data:image.data};(note.attachments||(note.attachments=[])).push(item);if(!save())throw new Error('Не удалось сохранить изображение. Экспортируй заметки и освободи место в хранилище.');return item.id;}};
+   editor=attachEditor(md,{value:note.body,imageStore,onChange:body=>{note.body=body;saved.textContent=save()?'Сохранено в браузере':'Не сохранено — экспортируй заметки';renderRelated();},onLink:openNote,onError:m=>notice(m,true)});
   tools.append(button('Выделенное → задача',e=>run(async()=>{const selection=editor.getSelection().trim();if(!selection)throw new Error('Выдели текст в редакторе, чтобы создать задачу.');const task=await createTask({title:selection.replace(/^\s*[-*] \[[ xX]\]\s*/,'').split('\n')[0].slice(0,500),description:selection,note_id:note.id,tags:tagsIn(note.body),list_name:'Входящие'});if(alive){notice('Задача создана и связана с заметкой.');renderRelated();}},e.currentTarget)));
   main.append(saved,el('div','related'));renderRelated();
  }

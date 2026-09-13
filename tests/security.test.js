@@ -11,6 +11,11 @@ test('Markdown strips active content and permits safe images and checklists',()=
  assert.match(html,/<input disabled="" type="checkbox">/);
  assert.doesNotMatch(html,/<script|<iframe|<svg|<form|onerror|onload|javascript:/i);
 });
+test('Markdown keeps emphasis semantics',()=>{
+  const {window}=new JSDOM('');
+  const html=renderMarkdown('_You **can** combine them_',window);
+  assert.match(html,/<em>You <strong>can<\/strong> combine them<\/em>/);
+});
 test('Remember me controls persistence, logout removes tokens but preserves notes',()=>{
  const {window}=new JSDOM('',{url:'https://example.test'});
  const {localStorage:l,sessionStorage:s}=window;

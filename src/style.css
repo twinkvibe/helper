@@ -9,8 +9,8 @@
   --surface: #151b18;
   --surface-raised: #1a231e;
   --surface-soft: #202a24;
-  --paper: #e6e9df;
-  --paper-ink: #182019;
+  --paper: #1a211d;
+  --paper-ink: #e5ede2;
   --line: #2d3b33;
   --line-strong: #425545;
   --text: #edf2e8;
@@ -40,6 +40,7 @@ body {
   min-width: 320px;
   min-height: 100dvh;
   margin: 0;
+  overflow-x: hidden;
   background:
     linear-gradient(90deg, rgb(210 244 119 / 0.025) 1px, transparent 1px) 0 0 / 32px 32px,
     var(--bg);
@@ -172,7 +173,7 @@ small {
   font-size: 12px;
 }
 
-em {
+.intro em {
   color: var(--accent);
   font-style: normal;
 }

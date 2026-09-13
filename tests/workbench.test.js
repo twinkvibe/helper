@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { filterTasks, loadNotes, saveNotes, tagsIn } from '../src/notes.js';
-import { markdownBlocks } from '../src/editor.js';
+import { attachEditor, markdownBlocks } from '../src/editor.js';
 import { mountWorkbench } from '../src/workbench.js';
 
 test('Tasks sort into open and completed groups and share Unicode tags', () => {
@@ -34,6 +34,18 @@ test('Single-window editor splits Markdown into whole semantic blocks', () => {
   assert.equal(blocks.join(''),source);
   assert.ok(blocks.some(block=>block.includes('- пункт 2')));
   assert.ok(blocks.some(block=>block.includes('```mermaid')));
+});
+
+test('Editor resolves local attachment references without exposing data URLs', () => {
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const names=['window','document'];
+  const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
+  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
+  const source='![Фото](attachment://image-1)';
+  attachEditor(document.querySelector('#editor'),{value:source,imageStore:{get:id=>id==='image-1'?'data:image/png;base64,AAAA':undefined}});
+  assert.equal(document.querySelector('.preview img').getAttribute('src'),'data:image/png;base64,AAAA');
+  assert.equal(document.querySelector('textarea').value,source);
+  dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
 });
 
 test('Workbench checks the session before loading and separates task states', async () => {
