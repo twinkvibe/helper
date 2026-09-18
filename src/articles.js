@@ -25,6 +25,10 @@ export async function renderPublicArticle(host, client, slug) {
  host.querySelector('h1').textContent = data.title;
  host.querySelector('.article-byline').textContent = data.author_name ? `Автор: ${data.author_name}` : '';
  host.querySelector('.article-body').innerHTML = renderMarkdown(data.body);
+ host.querySelectorAll('.article-body input[type="checkbox"]').forEach(input=>{input.disabled=true;input.setAttribute('aria-disabled','true');});
+ document.title = `${data.title} — helper`;
+ [['og:title',data.title],['og:description',data.excerpt||excerpt(data.body)],['og:url',location.href],['twitter:title',data.title],['twitter:description',data.excerpt||excerpt(data.body)]].forEach(([property,content])=>{let meta=document.querySelector(`meta[property="${property}"],meta[name="${property}"]`);if(!meta){meta=document.createElement('meta');meta.setAttribute(property.startsWith('twitter:')?'name':'property',property);document.head.append(meta);}meta.content=content;});
+ if (data.cover_url && /^https:\/\//i.test(data.cover_url)) { let meta=document.querySelector('meta[property="og:image"]');if(!meta){meta=document.createElement('meta');meta.setAttribute('property','og:image');document.head.append(meta);}meta.content=data.cover_url; }
 }
 
 export function mountArticles(host, { client, userId, username, notice, requireSession }) {

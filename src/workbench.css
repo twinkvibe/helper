@@ -804,6 +804,8 @@
   line-height: inherit;
 }
 
+.live-block.editing textarea { min-height: 520px; }
+
 .live-block.editing:focus-within {
   background: rgb(255 255 255 / 0.025);
 }

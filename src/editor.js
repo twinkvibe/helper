@@ -30,7 +30,7 @@ export function attachEditor(host,{value='',onChange=()=>{},onLink=()=>{},onErro
   if((e.ctrlKey||e.metaKey)&&!e.altKey){const f={b:['**','**'],i:['*','*'],k:['[','](https://example.com)']}[e.key.toLowerCase()];if(f){e.preventDefault();insert(...f);return;}}
   const start=input.selectionStart,end=input.selectionEnd,preceding=input.value.slice(0,start),line=preceding.slice(preceding.lastIndexOf('\n')+1);
   if(e.key==='Tab' && (preceding.match(/^```/gm)||[]).length%2){e.preventDefault();input.setRangeText('  ',start,end,'end');sync();}
-  if(e.key==='Enter'&&start===end){const m=line.match(/^(\s*)([-*]|\d+\.)(\s+)(\[[ xX]\]\s+)?(.*)$/);if(m){e.preventDefault();if(!m[5].trim())input.setRangeText('',start-line.length,end,'end');else input.setRangeText(`\n${m[1]}${/\d/.test(m[2])?`${parseInt(m[2])+1}.`:m[2]} ${m[4]?'[ ] ':''}`,start,end,'end');sync();return;}}
+  if(e.key==='Enter'&&start===end){const m=line.match(/^(\s*)([-*]|\d+\.)(\s+)(\[[ xX]\]\s+)?(.*)$/);e.preventDefault();if(m){if(!m[5].trim())input.setRangeText('',start-line.length,end,'end');else input.setRangeText(`\n${m[1]}${/\d/.test(m[2])?`${parseInt(m[2])+1}.`:m[2]} ${m[4]?'[ ] ':''}`,start,end,'end');}else input.setRangeText('\n',start,end,'end');sync();return;}
  }
  function liveBlocks(){
   parts=markdownBlocks(text.value);live.replaceChildren();active=text;

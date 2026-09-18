@@ -79,7 +79,6 @@ test('Live editor uses one Enter for a line break without creating an empty para
   const block=host.querySelector('.live-block'); block.click(); const input=host.querySelector('.live-block textarea');
   input.setSelectionRange(input.value.length,input.value.length);
   input.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
-  input.setRangeText('\n',input.selectionStart,input.selectionEnd,'end');
   input.setRangeText('**Не Пенис**',input.selectionStart,input.selectionEnd,'end');
   input.dispatchEvent(new dom.window.Event('input',{bubbles:true}));
   assert.equal(editor.getValue(),'**Пенис**\n**Не Пенис**');
