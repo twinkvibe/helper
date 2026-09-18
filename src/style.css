@@ -428,6 +428,7 @@ nav {
   background: transparent;
   color: #9eada0;
   text-align: left;
+  text-decoration: none;
   transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
 }
 
@@ -455,6 +456,8 @@ nav {
 .nav:disabled {
   color: #69766b;
 }
+
+.nav[aria-disabled="true"] { cursor: not-allowed; pointer-events: none; opacity: .48; }
 
 .account {
   display: grid;
@@ -508,6 +511,7 @@ nav {
 .article-list-item strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
 .article-list-item small { font-size:11px; }
 .article-pane { min-width:0; }
+.article-editor .live-editor { min-height: 620px; }
 .article-form { gap:16px; }
 .article-fields { display:grid; grid-template-columns:1fr 1.4fr; gap:12px; }
 .article-actions { display:flex; align-items:center; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
@@ -525,6 +529,8 @@ nav {
 .article-body h2 { font-size:31px; }.article-body h3 { font-size:23px; }
 .article-body blockquote { margin:1.6em 0; padding:8px 22px; border-left:3px solid var(--accent); color:#cddbc5; font-family:Georgia,serif; font-size:1.16em; }
 .article-body pre { overflow:auto; padding:18px; border:1px solid var(--line); border-radius:9px; background:#0d1210; }.article-body code { font-size:.86em; }.article-body :not(pre)>code { padding:2px 5px; border-radius:4px; background:var(--surface-soft); }.article-body img { max-width:100%; height:auto; border-radius:9px; }.article-body table { display:block; overflow:auto; border-collapse:collapse; }.article-body th,.article-body td { padding:9px; border:1px solid var(--line); }.public-login { display:inline-flex; text-decoration:none; }.missing { padding-top:13vh; }
+.audit-note { margin-bottom:18px; padding:13px 15px; border:1px solid var(--line); border-radius:8px; color:var(--muted); background:var(--surface); font-size:13px; }
+.audit-list { display:grid; gap:8px; }.audit-row { padding:14px 16px; border:1px solid var(--line); border-radius:8px; background:var(--surface); }.audit-row strong,.audit-row small,.audit-row p { display:block; }.audit-row small { margin-top:4px; }.audit-row p { margin:8px 0 0; color:var(--muted); font-size:13px; overflow-wrap:anywhere; }
 @media (max-width: 720px) {
   .articles-layout { grid-template-columns: 1fr; }
   .article-list { display:flex; overflow:auto; padding:6px; }

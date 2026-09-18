@@ -8,7 +8,9 @@ import './workbench.css';
 const root = document.querySelector('#app');
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-let client, storage, user, profile, page = 'todos', generation = 0, cleanupView = null, authTimer = null, expiring = false, authMessage = '';
+const pageFromPath = () => ({admin:'admin',editor:'articles',tasks:'todos',notes:'markdown',account:'settings',logs:'logs'}[location.pathname.replace(/^\/helper\/?/,'').replace(/\/$/,'')] || 'todos');
+const pageHref = page => page === 'todos' ? './' : `./${({articles:'editor',markdown:'notes',settings:'account',todos:'tasks'}[page] || page)}`;
+let client, storage, user, profile, page = pageFromPath(), generation = 0, cleanupView = null, authTimer = null, expiring = false, authMessage = '';
 const $ = (id) => document.getElementById(id);
 const escape = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function notice(message, bad = false) { const el = $('notice'); if(el) {el.textContent = message; el.className = bad ? 'notice error' : 'notice';} }
@@ -80,11 +82,11 @@ function shell() {
  if(cleanupView && cleanupView() === false) return;
  cleanupView = null;
  generation++;
- root.innerHTML = `<div class="workspace"><aside><a class="brand" href="./">h<span>elper</span><i>✳</i></a><nav>${[['todos','tasks','Задачи'],['markdown','note','Заметки'],['articles','articles','Публикации'],['settings','settings','Аккаунт'],...(profile.role==='admin'?[['admin','users','Админка']]:[])].map(([id,iconName,title])=>`<button data-page="${id}" class="nav ${page===id?'active':''}" ${profile.must_change_password && id!=='settings'?'disabled':''}><span data-nav-icon="${iconName}"></span>${title}</button>`).join('')}</nav><div class="account"><strong>${escape(profile.username)}</strong><small>${profile.role==='admin'?'Администратор':'Участник'}</small><button id="logout" class="quiet"><span data-nav-icon="logout"></span>Выйти</button></div></aside><main class="content"><p id="notice" class="notice" role="status" aria-live="polite"></p><section id="view"></section></main></div>`;
+ root.innerHTML = `<div class="workspace"><aside><a class="brand" href="./">h<span>elper</span><i>✳</i></a><nav>${[['todos','tasks','Задачи'],['markdown','note','Заметки'],['articles','articles','Публикации'],['settings','settings','Аккаунт'],...(profile.role==='admin'?[['admin','users','Админка'],['logs','logs','Логи']]:[])].map(([id,iconName,title])=>`<a data-page="${id}" href="${pageHref(id)}" class="nav ${page===id?'active':''}" ${profile.must_change_password && id!=='settings'?'aria-disabled="true" tabindex="-1"':''}><span data-nav-icon="${iconName}"></span>${title}</a>`).join('')}</nav><div class="account"><strong>${escape(profile.username)}</strong><small>${profile.role==='admin'?'Администратор':'Участник'}</small><button id="logout" class="quiet"><span data-nav-icon="logout"></span>Выйти</button></div></aside><main class="content"><p id="notice" class="notice" role="status" aria-live="polite"></p><section id="view"></section></main></div>`;
  document.querySelectorAll('[data-nav-icon]').forEach(slot=>slot.replaceChildren(icon(slot.dataset.navIcon)));
- document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{const next=b.dataset.page;if(next===page)return;if(cleanupView&&cleanupView()===false)return;cleanupView=null;page=next;shell();});
+ document.querySelectorAll('[data-page]').forEach(b=>b.onclick=e=>{if(b.getAttribute('aria-disabled')==='true'){e.preventDefault();return;}const next=b.dataset.page;if(next===page){e.preventDefault();return;}if(cleanupView&&cleanupView()===false){e.preventDefault();return;}cleanupView=null;page=next;});
  $('logout').onclick=async()=>{if(cleanupView&&cleanupView()===false)return;cleanupView=null;const {error}=await client.auth.signOut({scope:'local'});if(error){shell();notice('Не удалось выйти. Повтори попытку.',true);return;}login();};
- ({todos,markdown,articles,settings,admin:adminPage})[page]();
+ ({todos,markdown,articles,settings,admin:adminPage,logs})[page]();
 }
 async function todos() {
  cleanupView = mountWorkbench($('view'), {client, userId:user.id, initial:'todos', notice, requireSession});
@@ -93,6 +95,10 @@ function markdown(){
  cleanupView = mountWorkbench($('view'), {client, userId:user.id, initial:'markdown', notice, requireSession});
 }
 function articles(){ cleanupView = mountArticles($('view'), {client, userId:user.id, username:profile.username, notice, requireSession}); }
+async function logs(){
+ $('view').innerHTML='<div class="title"><div><h1>Логи</h1><p class="muted">Изменения задач и публикаций, записанные на сервере.</p></div></div><div class="audit-note">IP входов и полный журнал авторизации находятся в Supabase → Authentication → Logs. Браузер не может достоверно передать серверу IP.</div><div id="audit" class="audit-list">Загружаем…</div>';
+ try { await requireSession(); const {data,error}=await client.from('audit_logs').select('id,actor_id,action,entity,entity_id,details,created_at').order('created_at',{ascending:false}).limit(300); if(error)throw error; const list=$('audit');list.replaceChildren(); if(!data?.length){list.textContent='Записей пока нет.';return;} data.forEach(item=>{const row=document.createElement('article');row.className='audit-row';const title=document.createElement('strong');title.textContent=`${item.action} · ${item.entity}`;const meta=document.createElement('small');meta.textContent=`${new Date(item.created_at).toLocaleString('ru-RU')} · ${item.actor_id||'система'}${item.entity_id?` · ${item.entity_id}`:''}`;const details=document.createElement('p');details.textContent=Object.entries(item.details||{}).map(([key,value])=>`${key}: ${String(value)}`).join(' · ');row.append(title,meta,details);list.append(row);}); } catch(error) { $('audit').textContent='Не удалось загрузить логи.'; notice('Не удалось загрузить логи. Проверь миграцию и права администратора.',true); }
+}
 function settings(){
  $('view').innerHTML=`<div class="title"><div><h1>Аккаунт</h1><p class="muted">${profile.must_change_password?'Для продолжения замени временный пароль.':'Здесь можно изменить пароль.'}</p></div></div><form id="password" class="panel narrow"><label>Текущий пароль<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>Новый пароль<input name="password" type="password" minlength="9" maxlength="128" autocomplete="new-password" required></label><label>Повтори новый пароль<input name="repeat" type="password" minlength="9" maxlength="128" autocomplete="new-password" required></label><small>От 9 до 128 символов.</small><button class="primary">Изменить пароль</button></form>`;
  busy($('password'),async f=>{if(f.get('password')!==f.get('repeat'))throw new Error('Пароли не совпадают.');await action({action:'password',currentPassword:f.get('currentPassword'),password:f.get('password')});page='todos';await enter(user);notice('Пароль изменён.');});
@@ -110,6 +116,9 @@ async function boot(){
   localStorage.setItem('helper:storage-test','1');localStorage.removeItem('helper:storage-test');
   storage=sessionStorageAdapter(localStorage,sessionStorage);
   client=createClient(url,key,{auth:{storage,storageKey:'helper:auth',persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+  const reportClientError=(message,context='window')=>{if(client)client.rpc('record_client_error',{error_message:String(message).slice(0,500),error_context:context}).catch(()=>{});};
+  window.addEventListener('error',event=>reportClientError(event.message||'Неизвестная ошибка', 'window'));
+  window.addEventListener('unhandledrejection',event=>reportClientError(event.reason?.message||event.reason||'Необработанное обещание', 'promise'));
   client.auth.onAuthStateChange((event,session)=>{setTimeout(()=>{if(event==='SIGNED_OUT'){clearTimeout(authTimer);login();}else if(session)scheduleSessionCheck(session);},0);});
   const checkWhenActive=()=>{if(document.visibilityState==='visible'&&user)requireSession().catch(()=>{});};
   document.addEventListener('visibilitychange',checkWhenActive);

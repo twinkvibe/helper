@@ -2,7 +2,7 @@ import {
   Bold, Italic, Strikethrough, List, ListChecks, Link, Code, SquareCode,
   Quote, Image, Heading1, Heading2, Heading3, ImagePlus, Search, Plus,
   RefreshCw, CalendarDays, MoreHorizontal, Download, Upload, Trash2,
-  FileText, CheckSquare, Settings, Users, LogOut, Newspaper, createElement,
+  FileText, CheckSquare, Settings, Users, LogOut, Newspaper, History, createElement,
 } from 'lucide';
 
 const icons = {
@@ -30,6 +30,7 @@ const icons = {
   trash: Trash2,
   note: FileText,
   articles: Newspaper,
+  logs: History,
   tasks: CheckSquare,
   settings: Settings,
   users: Users,
