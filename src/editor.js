@@ -6,13 +6,13 @@ export function markdownBlocks(value) {
  const blocks=marked.lexer(value).map(t=>t.raw);
  return blocks.join('')===value && blocks.length ? blocks : [value];
 }
-export function attachEditor(host,{value='',onChange=()=>{},onLink=()=>{},onError=()=>{},id='source',imageStore=null}={}) {
+export function attachEditor(host,{value='',onChange=()=>{},onLink=()=>{},onError=()=>{},id='source',imageStore=null,singleBlock=false}={}) {
  host.innerHTML=`<div class="format-bar" role="toolbar" aria-label="Форматирование Markdown"></div><div class="editor split"><textarea id="${id}" aria-label="Markdown текст" spellcheck="false" placeholder="Начни писать…"></textarea><article class="preview" aria-label="Предпросмотр"></article></div><div class="live-editor" hidden></div><div class="editor-footer"><span class="word-count"></span><span>Ctrl/⌘ B, I, K · Markdown</span></div>`;
  const text=host.querySelector('textarea'),preview=host.querySelector('.preview'),bar=host.querySelector('.format-bar'),live=host.querySelector('.live-editor');
  let active=text,parts=[],mode='live';text.value=value;
  let undoStack=[],redoStack=[],lastValue=value;
  const remember=()=>{if(text.value===lastValue)return;undoStack.push(lastValue);if(undoStack.length>150)undoStack.shift();redoStack=[];lastValue=text.value;};
- const restore=value=>{text.value=value;lastValue=value;parts=mode==='live'?markdownBlocks(value):parts;active=text;emit();if(mode==='live')liveBlocks();else text.focus();};
+ const restore=value=>{text.value=value;lastValue=value;parts=mode==='live'?(singleBlock?[value]:markdownBlocks(value)):parts;active=text;emit();if(mode==='live')liveBlocks();else text.focus();};
  let renderVersion=0;
  const renderInto=(target,value)=>{const version=++renderVersion;const source=imageStore?value.replace(/\((attachment:\/\/[a-zA-Z0-9_-]+)\)/g,(match,url)=>{const data=imageStore.get(url.slice(13));return data?`(${data})`:match;}):value;target.innerHTML=renderMarkdown(source);enhanceDiagrams(target).catch(()=>{}).then(()=>{if(version!==renderVersion)return;});};
  const emit=()=>{renderInto(preview,text.value);host.querySelector('.word-count').textContent=`${text.value.trim()?text.value.trim().split(/\s+/).length:0} слов · ${text.value.length} символов`;onChange(text.value);};
@@ -33,7 +33,7 @@ export function attachEditor(host,{value='',onChange=()=>{},onLink=()=>{},onErro
   if(e.key==='Enter'&&start===end){const m=line.match(/^(\s*)([-*]|\d+\.)(\s+)(\[[ xX]\]\s+)?(.*)$/);e.preventDefault();if(m){if(!m[5].trim())input.setRangeText('',start-line.length,end,'end');else input.setRangeText(`\n${m[1]}${/\d/.test(m[2])?`${parseInt(m[2])+1}.`:m[2]} ${m[4]?'[ ] ':''}`,start,end,'end');}else input.setRangeText('\n',start,end,'end');sync();return;}
  }
  function liveBlocks(){
-  parts=markdownBlocks(text.value);live.replaceChildren();active=text;
+  parts=singleBlock?[text.value]:markdownBlocks(text.value);live.replaceChildren();active=text;
   parts.forEach((part,i)=>{
    const row=document.createElement('div');row.className='live-block preview';row.tabIndex=0;row.setAttribute('aria-label',`Редактировать блок ${i+1}`);
    const render=()=>{renderInto(row,parts[i]);row.classList.remove('editing');};
