@@ -12,6 +12,96 @@ import { icon } from './icons.js';
  * @param {string} [options.title='Кадрирование изображения']
  * @returns {Promise<Blob | null>}
  */
+export const SUPPORTED_IMAGE_MIMES = Object.freeze([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+]);
+
+export const SUPPORTED_IMAGE_EXTENSIONS = Object.freeze([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+]);
+
+/**
+ * Validates if the file is one of supported formats (PNG, JPEG, WebP, GIF).
+ * Explicitly rejects HEIC/HEIF/AVIF or other unsupported formats.
+ */
+export function isSupportedImageFormat(file) {
+  if (!file) return false;
+  const type = (file.type || '').toLowerCase();
+  const name = (file.name || '').toLowerCase();
+
+  // Explicitly check unsupported modern / camera formats
+  if (
+    type === 'image/heic' ||
+    type === 'image/heif' ||
+    type === 'image/avif' ||
+    /\.(heic|heif|avif)$/i.test(name)
+  ) {
+    return false;
+  }
+
+  if (SUPPORTED_IMAGE_MIMES.includes(type)) {
+    return true;
+  }
+
+  // If MIME type is empty or generic binary, fallback to extension
+  if (!type || type === 'application/octet-stream') {
+    return SUPPORTED_IMAGE_EXTENSIONS.some(ext => name.endsWith(ext));
+  }
+
+  return false;
+}
+
+/**
+ * Validates file instance, supported image formats, emptiness, and file size.
+ * Throws actionable user-facing Russian errors before opening cropper.
+ *
+ * @param {Blob | File} file
+ * @param {Object} [options]
+ * @param {number} [options.maxSize=5242880]
+ */
+export function validateImageFile(file, { maxSize = 5 * 1024 * 1024 } = {}) {
+  if (!file || !(file instanceof Blob)) {
+    const err = new Error('Не удалось прочитать изображение: неверный формат файла.');
+    err.stage = 'decode';
+    throw err;
+  }
+
+  const type = (file.type || '').toLowerCase();
+  const name = (file.name || '').toLowerCase();
+
+  // If explicit non-image MIME type (like text/plain, application/pdf)
+  if (type && !type.startsWith('image/') && type !== 'application/octet-stream' && !SUPPORTED_IMAGE_EXTENSIONS.some(ext => name.endsWith(ext))) {
+    const err = new Error('Не удалось прочитать изображение: файл не является изображением.');
+    err.stage = 'decode';
+    throw err;
+  }
+
+  if (file.size === 0) {
+    const err = new Error('Не удалось прочитать изображение: файл пуст.');
+    err.stage = 'decode';
+    throw err;
+  }
+
+  if (!isSupportedImageFormat(file)) {
+    const err = new Error('Этот формат пока не поддерживается. Используй PNG, JPEG, WebP или GIF.');
+    err.stage = 'decode';
+    throw err;
+  }
+
+  if (maxSize && file.size > maxSize) {
+    const err = new Error('Выбери PNG, JPEG, WebP или GIF до 5 МБ.');
+    err.stage = 'decode';
+    throw err;
+  }
+}
+
 /**
  * Decodes a local image File or Blob safely.
  *
@@ -24,21 +114,19 @@ import { icon } from './icons.js';
  */
 export function loadLocalImage(file) {
   return new Promise((resolve, reject) => {
-    if (!file || !(file instanceof Blob)) {
-      return reject(new Error('Не удалось прочитать изображение: неверный формат файла.'));
-    }
-    if (file.type && !file.type.startsWith('image/')) {
-      return reject(new Error('Не удалось прочитать изображение: файл не является изображением.'));
-    }
-    if (file.size === 0) {
-      return reject(new Error('Не удалось прочитать изображение: файл пуст.'));
+    try {
+      validateImageFile(file);
+    } catch (err) {
+      return reject(err);
     }
 
     let objectUrl = null;
     try {
       objectUrl = URL.createObjectURL(file);
     } catch {
-      return reject(new Error('Не удалось прочитать изображение: ошибка создания объекта URL.'));
+      const err = new Error('Не удалось декодировать изображение: ошибка создания объекта URL.');
+      err.stage = 'decode';
+      return reject(err);
     }
 
     const img = new Image();
@@ -57,19 +145,32 @@ export function loadLocalImage(file) {
       }
     };
 
+    const handleDecodeFailure = () => {
+      cleanup();
+      // Only log safe metadata to debug console. NEVER log file contents.
+      console.error('[Image Pipeline: decode]', {
+        name: file.name || '',
+        type: file.type || '',
+        size: file.size || 0,
+        lastModified: file.lastModified || null,
+      });
+      const err = new Error('Не удалось декодировать изображение.');
+      err.stage = 'decode';
+      reject(err);
+    };
+
     img.onload = () => {
       if (typeof img.decode === 'function') {
         img.decode()
           .then(() => resolve({ img, cleanup }))
-          .catch(() => resolve({ img, cleanup }));
+          .catch(() => handleDecodeFailure());
       } else {
         resolve({ img, cleanup });
       }
     };
 
     img.onerror = () => {
-      cleanup();
-      reject(new Error('Не удалось прочитать изображение'));
+      handleDecodeFailure();
     };
 
     img.src = objectUrl;
@@ -92,6 +193,8 @@ export async function editImage(file, { aspectRatio = 1, outputWidth = 512, outp
   if (typeof document === 'undefined') {
     return null;
   }
+
+  validateImageFile(file);
 
   const { img, cleanup: cleanupImage } = await loadLocalImage(file);
 
@@ -277,35 +380,55 @@ export async function editImage(file, { aspectRatio = 1, outputWidth = 512, outp
         saveBtn.disabled = true;
         saveBtn.textContent = 'Обработка…';
 
-        // Calculate source rectangle on original image
-        const curScale = baseScale * userZoom;
-        const srcX = -panX / curScale;
-        const srcY = -panY / curScale;
-        const srcW = viewportW / curScale;
-        const srcH = canvasH / curScale;
+        try {
+          // Calculate source rectangle on original image
+          const curScale = baseScale * userZoom;
+          const srcX = -panX / curScale;
+          const srcY = -panY / curScale;
+          const srcW = viewportW / curScale;
+          const srcH = canvasH / curScale;
 
-        const outCanvas = document.createElement('canvas');
-        outCanvas.width = outputWidth;
-        outCanvas.height = effectiveOutputH;
-        const outCtx = outCanvas.getContext('2d');
+          const outCanvas = document.createElement('canvas');
+          outCanvas.width = outputWidth;
+          outCanvas.height = effectiveOutputH;
+          const outCtx = outCanvas.getContext('2d');
 
-        outCtx.imageSmoothingEnabled = true;
-        outCtx.imageSmoothingQuality = 'high';
-        outCtx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, outputWidth, effectiveOutputH);
-
-        const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-        outCanvas.toBlob(
-          blob => {
+          if (!outCtx) {
             cleanup();
-            if (blob) {
-              resolve(blob);
-            } else {
-              reject(new Error('Не удалось сгенерировать изображение'));
-            }
-          },
-          mimeType,
-          0.92
-        );
+            console.error('[Image Pipeline: crop]', 'Canvas 2D context unavailable');
+            const err = new Error('Не удалось выполнить кадрирование изображения.');
+            err.stage = 'crop';
+            reject(err);
+            return;
+          }
+
+          outCtx.imageSmoothingEnabled = true;
+          outCtx.imageSmoothingQuality = 'high';
+          outCtx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, outputWidth, effectiveOutputH);
+
+          const mimeType = file.type === 'image/png' ? 'image/png' : (file.type === 'image/webp' ? 'image/webp' : 'image/jpeg');
+          outCanvas.toBlob(
+            blob => {
+              cleanup();
+              if (blob) {
+                resolve(blob);
+              } else {
+                console.error('[Image Pipeline: encode]', { mimeType });
+                const err = new Error('Не удалось закодировать изображение.');
+                err.stage = 'encode';
+                reject(err);
+              }
+            },
+            mimeType,
+            0.92
+          );
+        } catch (cropErr) {
+          cleanup();
+          console.error('[Image Pipeline: crop]', cropErr?.message || cropErr);
+          const err = new Error('Не удалось выполнить кадрирование изображения.');
+          err.stage = 'crop';
+          reject(err);
+        }
       };
   });
 }

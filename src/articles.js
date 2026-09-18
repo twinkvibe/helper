@@ -2,7 +2,7 @@ import { attachEditor } from './editor.js';
 import { renderMarkdown } from './security.js';
 import { icon } from './icons.js';
 import { brandHtml } from './router.js';
-import { editImage } from './image-editor.js';
+import { editImage, validateImageFile } from './image-editor.js';
 
 const MAX_BODY = 5000000;
 const slugify = value =>
@@ -363,6 +363,7 @@ function openArticleImageDialog({ uploadMedia, insert, notice }) {
     const file = fileInput.files[0];
     if (!file) return;
     try {
+      validateImageFile(file);
       uploadStatus.textContent = 'Подготовка…';
       const croppedBlob = await editImage(file, {
         aspectRatio: null,
@@ -375,7 +376,7 @@ function openArticleImageDialog({ uploadMedia, insert, notice }) {
         return;
       }
       uploadStatus.textContent = 'Загрузка…';
-      const url = await uploadMedia(croppedBlob);
+      const url = await uploadMedia(croppedBlob, file.name);
       insert(`\n![${escapeHtml(file.name.replace(/\.[^.]+$/, ''))}|640](${url})\n`);
       notice('Изображение вставлено в текст.');
       close();
@@ -405,18 +406,33 @@ function openArticleImageDialog({ uploadMedia, insert, notice }) {
 export function mountArticles(host, { client, userId, username, notice, requireSession }) {
   let articles = [], selected = null, editor = null, alive = true;
 
-  const uploadMedia = async file => {
-    if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type) || file.size > 5 * 1024 * 1024) {
-      throw new Error('Выбери PNG, JPEG, WebP или GIF до 5 МБ.');
-    }
-    const safe = (file.name || 'image').toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
+  const uploadMedia = async (file, originalName) => {
+    validateImageFile(file);
+    const fileName = originalName || file.name || 'image';
+    const safe = fileName.toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
     const path = `${userId}/${crypto.randomUUID()}-${safe}`;
     const { error } = await client.storage.from('article-media').upload(path, file, {
-      contentType: file.type,
+      contentType: file.type || 'image/jpeg',
       upsert: false,
     });
-    if (error) throw new Error('Не удалось загрузить изображение. Проверь права доступа к хранилищу.');
-    return client.storage.from('article-media').getPublicUrl(path).data.publicUrl;
+    if (error) {
+      console.error('[Image Pipeline: storage upload]', {
+        code: error.code || null,
+        message: error.message || null,
+      });
+      const err = new Error('Не удалось загрузить изображение в хранилище.');
+      err.stage = 'storage upload';
+      throw err;
+    }
+    const publicUrlData = client.storage.from('article-media').getPublicUrl(path)?.data;
+    const url = publicUrlData?.publicUrl;
+    if (!url) {
+      console.error('[Image Pipeline: public URL]', { path });
+      const err = new Error('Не удалось получить публичную ссылку на изображение.');
+      err.stage = 'public URL';
+      throw err;
+    }
+    return url;
   };
 
   const save = async article => {
@@ -655,6 +671,7 @@ export function mountArticles(host, { client, userId, username, notice, requireS
         const file = coverFileHidden.files[0];
         if (!file) return;
         try {
+          validateImageFile(file);
           coverUploadStatus.textContent = 'Кадрирование…';
           const croppedBlob = await editImage(file, {
             aspectRatio: 16 / 9,
@@ -667,7 +684,7 @@ export function mountArticles(host, { client, userId, username, notice, requireS
             return;
           }
           coverUploadStatus.textContent = 'Загрузка…';
-          const url = await uploadMedia(croppedBlob);
+          const url = await uploadMedia(croppedBlob, file.name);
           coverInput.value = url;
           coverPreviewImg.src = url;
           coverPreviewBox.hidden = false;

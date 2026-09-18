@@ -48,7 +48,9 @@ revoke all on function public.set_profile_bio(text) from public, anon;
 grant execute on function public.set_profile_bio(text) to authenticated;
 
 -- 3. Refresh get_public_profile to include bio
-create or replace function public.get_public_profile(profile_username text)
+drop function if exists public.get_public_profile(text);
+
+create function public.get_public_profile(profile_username text)
   returns table (
     username     text,
     display_name text,
@@ -302,3 +304,6 @@ drop trigger if exists articles_audit_log on public.articles;
 create trigger articles_audit_log after insert or update or delete on public.articles for each row execute function public.log_data_change();
 
 commit;
+
+-- Refresh schema cache
+NOTIFY pgrst, 'reload schema';

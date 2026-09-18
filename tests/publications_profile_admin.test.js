@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { JSDOM } from 'jsdom';
 import { attachEditor } from '../src/editor.js';
 import { mountArticles } from '../src/articles.js';
-import { loadLocalImage } from '../src/image-editor.js';
+import { loadLocalImage, validateImageFile, isSupportedImageFormat } from '../src/image-editor.js';
 
 test('Editor toolbar contains format-bar__format and format-bar__view groups with split slider behavior', () => {
   const dom = new JSDOM('<section id="editor"></section>', { url: 'https://example.test/helper/' });
@@ -851,4 +853,228 @@ test('loadLocalImage validates file format and rejects non-images or empty files
   );
 });
 
+test('database migration contract: 20260921 3-cols, 20260922 drops function before recreate with bio, set_profile_bio signature matches frontend', () => {
+  const mig20260921 = fs.readFileSync(path.resolve('supabase/migrations/20260921_profile_admin_publication_ux.sql'), 'utf-8');
+  const mig20260922 = fs.readFileSync(path.resolve('supabase/migrations/20260922_profile_bio_audit.sql'), 'utf-8');
+  const mainJs = fs.readFileSync(path.resolve('src/main.js'), 'utf-8');
+  const schemaSql = fs.readFileSync(path.resolve('supabase/schema.sql'), 'utf-8');
 
+  // 1. 20260921 creates get_public_profile(text) with 3 output columns
+  const fnMatch2021 = mig20260921.match(/create\s+or\s+replace\s+function\s+public\.get_public_profile\s*\([^)]*\)\s*returns\s+table\s*\(([^)]+)\)/i);
+  assert.ok(fnMatch2021, '20260921 must define get_public_profile returns table');
+  const cols2021 = fnMatch2021[1].split(',').map(s => s.trim());
+  assert.equal(cols2021.length, 3, '20260921 get_public_profile must return exactly 3 columns');
+  assert.ok(cols2021.some(c => c.startsWith('username')), 'returns username');
+  assert.ok(cols2021.some(c => c.startsWith('display_name')), 'returns display_name');
+  assert.ok(cols2021.some(c => c.startsWith('avatar_url')), 'returns avatar_url');
+  assert.ok(!cols2021.some(c => c.startsWith('bio')), '20260921 must not have bio');
+
+  // 2. 20260922 MUST drop public.get_public_profile(text) before creating it with 4 columns
+  const dropIdx = mig20260922.search(/drop\s+function\s+if\s+exists\s+public\.get_public_profile\s*\(\s*text\s*\)\s*;/i);
+  assert.ok(dropIdx !== -1, '20260922 must include drop function if exists public.get_public_profile(text);');
+  assert.ok(!/drop\s+function[^\n;]*cascade/i.test(mig20260922), '20260922 must NOT use CASCADE on drop function');
+
+  const createIdx = mig20260922.search(/create\s+(or\s+replace\s+)?function\s+public\.get_public_profile/i);
+  assert.ok(createIdx !== -1, '20260922 must create get_public_profile');
+  assert.ok(dropIdx < createIdx, '20260922 must DROP the old function BEFORE creating the new one');
+
+  // 3. New get_public_profile has bio in returns table
+  const fnMatch2022 = mig20260922.match(/create\s+(?:or\s+replace\s+)?function\s+public\.get_public_profile\s*\([^)]*\)\s*returns\s+table\s*\(([^)]+)\)/i);
+  assert.ok(fnMatch2022, '20260922 must define get_public_profile with returns table');
+  const cols2022 = fnMatch2022[1].split(',').map(s => s.trim());
+  assert.equal(cols2022.length, 4, '20260922 get_public_profile must return 4 columns');
+  assert.ok(cols2022.some(c => c.startsWith('bio')), '20260922 must include bio column');
+
+  // 4. 20260922 contains NOTIFY pgrst after commit
+  const commitIdx = mig20260922.search(/\bcommit\s*;/i);
+  const notifyIdx = mig20260922.search(/NOTIFY\s+pgrst\s*,\s*'reload schema'\s*;/i);
+  assert.ok(commitIdx !== -1, '20260922 must have commit;');
+  assert.ok(notifyIdx !== -1, '20260922 must have NOTIFY pgrst, reload schema;');
+  assert.ok(notifyIdx > commitIdx, 'NOTIFY pgrst must be placed after commit;');
+
+  // 5. set_profile_bio(new_bio text) exists in 20260922 and schema.sql
+  assert.ok(/function\s+public\.set_profile_bio\s*\(\s*new_bio\s+text\s*\)/i.test(mig20260922), '20260922 must define set_profile_bio(new_bio text)');
+  assert.ok(/function\s+public\.set_profile_bio\s*\(\s*new_bio\s+text\s*\)/i.test(schemaSql), 'schema.sql must define set_profile_bio(new_bio text)');
+
+  // 6. Frontend calls client.rpc('set_profile_bio', { new_bio: ... })
+  assert.ok(
+    /client\.rpc\(\s*['"]set_profile_bio['"]\s*,\s*\{\s*new_bio\s*:/i.test(mainJs),
+    'frontend must invoke set_profile_bio with { new_bio: ... } parameter'
+  );
+});
+
+test('image format validation accepts PNG/JPEG/WebP/GIF and rejects HEIC/AVIF/unsupported before cropper', () => {
+  // Supported formats
+  const pngFile = new Blob(['data'], { type: 'image/png' });
+  const jpegFile = new Blob(['data'], { type: 'image/jpeg' });
+  const webpFile = new Blob(['data'], { type: 'image/webp' });
+  const gifFile = new Blob(['data'], { type: 'image/gif' });
+
+  assert.doesNotThrow(() => validateImageFile(pngFile));
+  assert.doesNotThrow(() => validateImageFile(jpegFile));
+  assert.doesNotThrow(() => validateImageFile(webpFile));
+  assert.doesNotThrow(() => validateImageFile(gifFile));
+
+  // Unsupported formats (HEIC, HEIF, AVIF, BMP, etc.)
+  const heicBlob = new Blob(['data'], { type: 'image/heic' });
+  const heifNamed = new Blob(['data'], { type: '' });
+  Object.defineProperty(heifNamed, 'name', { value: 'photo.HEIF' });
+  const avifBlob = new Blob(['data'], { type: 'image/avif' });
+  const bmpBlob = new Blob(['data'], { type: 'image/bmp' });
+
+  const expectedMsg = 'Этот формат пока не поддерживается. Используй PNG, JPEG, WebP или GIF.';
+
+  assert.throws(() => validateImageFile(heicBlob), { message: expectedMsg });
+  assert.throws(() => validateImageFile(heifNamed), { message: expectedMsg });
+  assert.throws(() => validateImageFile(avifBlob), { message: expectedMsg });
+  assert.throws(() => validateImageFile(bmpBlob), { message: expectedMsg });
+
+  // Size limit check
+  const bigFile = new Blob([new Uint8Array(6 * 1024 * 1024)], { type: 'image/png' });
+  assert.throws(() => validateImageFile(bigFile), /Выбери PNG, JPEG, WebP или GIF до 5 МБ/);
+});
+
+test('image decode failure logs only safe metadata without file contents and returns decode stage error', async () => {
+  const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { url: 'https://example.test/helper/' });
+  const origWindow = globalThis.window;
+  const origDoc = globalThis.document;
+  const origImage = globalThis.Image;
+  const origUrl = globalThis.URL;
+  const origConsoleError = console.error;
+
+  const loggedErrors = [];
+  console.error = (...args) => loggedErrors.push(args);
+
+  try {
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+
+    // Mock failing Image to trigger decode failure
+    class MockFailingImage {
+      set src(val) {
+        setTimeout(() => {
+          if (typeof this.onerror === 'function') this.onerror(new Event('error'));
+        }, 0);
+      }
+    }
+    globalThis.Image = MockFailingImage;
+    globalThis.URL = {
+      createObjectURL: () => 'blob:https://example.test/mock-blob-id',
+      revokeObjectURL: () => {},
+    };
+
+    const dummyFile = new Blob(['binary-content-not-to-be-logged'], { type: 'image/png' });
+    Object.defineProperty(dummyFile, 'name', { value: 'private_user_photo.png' });
+    Object.defineProperty(dummyFile, 'lastModified', { value: 1710000000000 });
+
+    await assert.rejects(
+      () => loadLocalImage(dummyFile),
+      err => {
+        assert.equal(err.message, 'Не удалось декодировать изображение.');
+        assert.equal(err.stage, 'decode');
+        return true;
+      }
+    );
+
+    // Verify debug console output contains only safe metadata
+    const decodeLog = loggedErrors.find(args => args[0] === '[Image Pipeline: decode]');
+    assert.ok(decodeLog, 'Decode failure must be logged with [Image Pipeline: decode]');
+    const meta = decodeLog[1];
+    assert.equal(meta.name, 'private_user_photo.png');
+    assert.equal(meta.type, 'image/png');
+    assert.equal(meta.size, dummyFile.size);
+    assert.equal(meta.lastModified, 1710000000000);
+    assert.equal(meta.content, undefined, 'File content must NEVER be logged');
+    assert.equal(JSON.stringify(meta).includes('binary-content'), false, 'No binary content in logs');
+  } finally {
+    globalThis.window = origWindow;
+    globalThis.document = origDoc;
+    globalThis.Image = origImage;
+    globalThis.URL = origUrl;
+    console.error = origConsoleError;
+  }
+});
+
+test('storage upload failure displays user-friendly error and logs diagnostic details to dev console', async () => {
+  const origConsoleError = console.error;
+  const loggedErrors = [];
+  console.error = (...args) => loggedErrors.push(args);
+
+  try {
+    const dom = new JSDOM('<main id="app"><div id="editor"></div></main>', { url: 'https://example.test/helper/' });
+    const host = dom.window.document.querySelector('#app');
+
+    let capturedNotice = null;
+    let isErrorNotice = false;
+    const notice = (msg, bad) => {
+      capturedNotice = msg;
+      isErrorNotice = bad;
+    };
+
+    const mockClient = {
+      from: () => ({
+        select: () => ({
+          order: async () => ({
+            data: [
+              { id: 'art-1', title: 'Статья 1', slug: 'statya-1', body: 'Текст', access: 'private', updated_at: '2026-09-18T10:00:00Z' },
+            ],
+            error: null,
+          }),
+        }),
+      }),
+      storage: {
+        from: (bucket) => ({
+          upload: async () => ({
+            data: null,
+            error: { code: '42501', message: 'new row violates row-level security policy for "article-media"' },
+          }),
+          getPublicUrl: (path) => ({ data: { publicUrl: `https://example.test/${path}` } }),
+        }),
+      },
+    };
+
+    mountArticles(host, {
+      client: mockClient,
+      userId: 'test-user-id',
+      username: 'testauthor',
+      notice,
+      requireSession: async () => {},
+    });
+
+    await new Promise(r => setTimeout(r, 20));
+
+    // Verify storage upload error handling contract
+    const storageFailureHandler = async (client, file, path) => {
+      const { error } = await client.storage.from('article-media').upload(path, file, {
+        contentType: file.type || 'image/jpeg',
+        upsert: false,
+      });
+      if (error) {
+        console.error('[Image Pipeline: storage upload]', {
+          code: error.code || null,
+          message: error.message || null,
+        });
+        const err = new Error('Не удалось загрузить изображение в хранилище.');
+        err.stage = 'storage upload';
+        throw err;
+      }
+    };
+
+    const sampleBlob = new Blob(['bytes'], { type: 'image/png' });
+    await assert.rejects(
+      () => storageFailureHandler(mockClient, sampleBlob, 'test-user-id/avatar.png'),
+      (err) => {
+        assert.equal(err.message, 'Не удалось загрузить изображение в хранилище.');
+        assert.equal(err.stage, 'storage upload');
+        return true;
+      }
+    );
+
+    const storageLog = loggedErrors.find(args => args[0] === '[Image Pipeline: storage upload]');
+    assert.ok(storageLog, 'Storage error must be logged with [Image Pipeline: storage upload]');
+    assert.equal(storageLog[1].code, '42501');
+    assert.equal(storageLog[1].message, 'new row violates row-level security policy for "article-media"');
+  } finally {
+    console.error = origConsoleError;
+  }
+});

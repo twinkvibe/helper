@@ -4,7 +4,7 @@ import { mountWorkbench } from './workbench.js';
 import { mountArticles, publicArticleSlug, renderPublicArticle, renderPublicProfile } from './articles.js';
 import { icon } from './icons.js';
 import { parseRoute, sanitizeNext, pageHref, brandHtml, appPath } from './router.js';
-import { editImage } from './image-editor.js';
+import { editImage, validateImageFile } from './image-editor.js';
 import './style.css';
 import './workbench.css';
 
@@ -724,9 +724,7 @@ function settings() {
     const file = avatarFileInput.files[0];
     if (!file) return;
     try {
-      if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type) || file.size > 5 * 1024 * 1024) {
-        throw new Error('Выбери PNG, JPEG, WebP или GIF до 5 МБ.');
-      }
+      validateImageFile(file);
       const croppedBlob = await editImage(file, {
         aspectRatio: 1,
         outputWidth: 512,
@@ -742,9 +740,25 @@ function settings() {
         contentType: croppedBlob.type || 'image/jpeg',
         upsert: true,
       });
-      if (uploaded.error) throw uploaded.error;
+      if (uploaded.error) {
+        console.error('[Image Pipeline: storage upload]', {
+          code: uploaded.error.code || null,
+          message: uploaded.error.message || null,
+        });
+        const err = new Error('Не удалось загрузить изображение в хранилище.');
+        err.stage = 'storage upload';
+        throw err;
+      }
 
-      const avatar = client.storage.from('article-media').getPublicUrl(path).data.publicUrl;
+      const publicUrlData = client.storage.from('article-media').getPublicUrl(path)?.data;
+      const avatar = publicUrlData?.publicUrl;
+      if (!avatar) {
+        console.error('[Image Pipeline: public URL]', { path });
+        const err = new Error('Не удалось получить публичную ссылку на изображение.');
+        err.stage = 'public URL';
+        throw err;
+      }
+
       const saved = await client.rpc('set_profile_avatar', { avatar });
       if (saved.error) throw saved.error;
 
