@@ -26,11 +26,22 @@ The UI converts a normalized username into `<username>@users.helper.invalid` and
 
 “Remember me” selects localStorage for the Supabase session. Without it, sessionStorage is used. Markdown notes always use localStorage and survive logout.
 
-## Server data
+## Server data and publications
 
-`profiles` stores the application username, `admin` or `member` role, blocked state, and forced-password-change state. Auth credentials stay inside Supabase Auth.
+`profiles` stores the application username, optional `display_name` (1–80 chars, falls back to username), `avatar_url`, `admin` or `member` role, blocked state, and forced-password-change state. Public profile data is queried via the `get_public_profile(username)` RPC, which projects only safe public fields (`username`, `display_name`, `avatar_url`) for active profiles.
 
-`todos` stores task title, completion, Markdown description, list, due date, priority, tags, and an optional browser-note UUID. RLS checks task ownership and the current profile on every operation. The `account` Edge Function separately verifies the access token and current profile before privileged operations.
+`todos` stores task title, completion, Markdown description, list, due date, priority, tags, and an optional browser-note UUID. RLS checks task ownership and the current profile on every operation.
+
+`articles` stores authored publication drafts and published articles. Access control follows three tiers:
+- `public`: accessible via direct SELECT to anyone when author is unblocked; displayed in public author profile at `/helper/u/:username`;
+- `unlisted`: not enumerable via direct SELECT (protected by RLS); accessible only via the SECURITY DEFINER RPC `get_article_by_slug(slug)`;
+- `private`: accessible only by the author.
+
+The `account` Edge Function executes privileged administrative tasks with service-role authority while recording explicit audit entries in `audit_logs`:
+- user role promotions/demotions with last-admin protection;
+- user blocking/unblocking and password resets;
+- complete account deletion (including cascading rows and cleaning orphaned `article-media/<userId>/...` storage objects);
+- publication moderation (`articles:list`, `articles:access`, `articles:delete`).
 
 ## Local notes
 
@@ -40,16 +51,17 @@ Internal Markdown links use `#note=<UUID>`. Renaming a note therefore does not b
 
 Images selected from the device are stored as local note attachments with short `attachment://` references in the Markdown source, currently limited to 1 MB each. Remote images must use HTTPS. Task descriptions store any existing embedded images in PostgreSQL; note attachments count against browser storage quota.
 
-## Markdown rendering
+## Markdown rendering and editor
 
 All Markdown first passes through Marked and DOMPurify with a small tag and attribute allowlist. Checkboxes are disabled. Image sources are validated and receive lazy loading and a no-referrer policy.
 
 Mermaid is imported only when a `mermaid` fenced block exists. It runs with strict security settings, and its generated SVG is sanitized again before insertion.
 
-The editor has two presentations over the same Markdown source:
+The editor operates on the plain Markdown source with two modes:
+- editor mode: compact single-pane textarea with formatting toolbar;
+- split mode: two panes (editor + live preview) with a resizable split slider.
 
-- split mode shows the complete source and rendered preview;
-- live mode tokenizes the document into semantic Markdown blocks, shows rendered blocks, and replaces only the focused block with a textarea.
+Toolbar actions include quick formatting, heading styles, link insertion, code fences, and custom image insertion with cropper support or HTTPS URLs.
 
 ## Deployment
 

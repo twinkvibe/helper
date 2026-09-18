@@ -2,7 +2,8 @@ import {
   Bold, Italic, Strikethrough, List, ListChecks, Link, Code, SquareCode,
   Quote, Image, Heading1, Heading2, Heading3, ImagePlus, Search, Plus,
   RefreshCw, CalendarDays, MoreHorizontal, Download, Upload, Trash2,
-  FileText, CheckSquare, Settings, Users, LogOut, Newspaper, History, createElement,
+  FileText, CheckSquare, Settings, Users, LogOut, Newspaper, History,
+  Menu, X, createElement,
 } from 'lucide';
 
 const icons = {
@@ -30,11 +31,14 @@ const icons = {
   trash: Trash2,
   note: FileText,
   articles: Newspaper,
+  adminArticles: Newspaper,
   logs: History,
   tasks: CheckSquare,
   settings: Settings,
   users: Users,
   logout: LogOut,
+  menu: Menu,
+  close: X,
 };
 
 export function icon(name, label = '') {

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { filterTasks, loadNotes, parseTaskQuery, saveNotes, tagsIn } from '../src/notes.js';
-import { attachEditor, markdownBlocks } from '../src/editor.js';
+import { attachEditor } from '../src/editor.js';
 import { mountWorkbench } from '../src/workbench.js';
 
 test('Tasks sort into open and completed groups and share Unicode tags', () => {
@@ -30,19 +30,24 @@ test('Multiple named notes persist and legacy Markdown is migrated without delet
   assert.equal(window.localStorage.getItem('helper:markdown:user'),'# старая заметка');
 });
 
-test('Single-window editor splits Markdown into whole semantic blocks', () => {
-  const source='# Заголовок\n\n- пункт 1\n- пункт 2\n\n```mermaid\ngraph TD\n A-->B\n```\n';
-  const blocks=markdownBlocks(source);
-  assert.equal(blocks.join(''),source);
-  assert.ok(blocks.some(block=>block.includes('- пункт 2')));
-  assert.ok(blocks.some(block=>block.includes('```mermaid')));
+test('Editor uses a single textarea source and completely removes live/block editor', () => {
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const names=['window','document','localStorage'];
+  const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
+  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
+  const host = document.querySelector('#editor');
+  attachEditor(host, { value: '# Заголовок\n\nПараграф' });
+  assert.equal(host.querySelectorAll('textarea').length, 1);
+  assert.equal(host.querySelector('.live-editor'), null);
+  assert.equal(host.querySelector('.live-block'), null);
+  dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
 });
 
 test('Editor resolves local attachment references without exposing data URLs', () => {
   const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
-  const names=['window','document'];
+  const names=['window','document','localStorage'];
   const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
-  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
+  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
   const source='![Фото](attachment://image-1)';
   attachEditor(document.querySelector('#editor'),{value:source,imageStore:{get:id=>id==='image-1'?'data:image/png;base64,AAAA':undefined}});
   assert.equal(document.querySelector('.preview img').getAttribute('src'),'data:image/png;base64,AAAA');
@@ -50,40 +55,110 @@ test('Editor resolves local attachment references without exposing data URLs', (
   dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
 });
 
-test('Single-window editor renders checklist items, toggles them, and supports undo and redo', () => {
-  const dom=new JSDOM('<section id="editor"></section>',{url:'https://example.test/helper/'});
-  const names=['window','document'];
+test('Switching editor -> split -> editor preserves exact Markdown source', () => {
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const names=['window','document','localStorage'];
   const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
-  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
-  const host=document.querySelector('#editor');
-  attachEditor(host,{value:'- [ ] Сделать дело'});
-  assert.equal(host.querySelector('.live-editor').hidden,false);
-  const checkbox=host.querySelector('.live-block input[type="checkbox"]');
-  assert.ok(checkbox);
-  checkbox.click();
-  assert.equal(host.querySelector('textarea').value,'- [x] Сделать дело');
-  host.querySelector('textarea').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true}));
-  assert.equal(host.querySelector('textarea').value,'- [ ] Сделать дело');
-  host.querySelector('textarea').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'z',ctrlKey:true,shiftKey:true,bubbles:true}));
-  assert.equal(host.querySelector('textarea').value,'- [x] Сделать дело');
+  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
+  const host = document.querySelector('#editor');
+  const source = '# Заголовок\n\nСтрока 1\nСтрока 2\n\n> Цитата\n';
+  const editor = attachEditor(host, { value: source });
+  const modeSelect = host.querySelector('.mode-select');
+  const preview = host.querySelector('.preview');
+  const splitControl = host.querySelector('.split-control');
+
+  assert.equal(preview.hidden, true);
+  assert.equal(splitControl.hidden, true);
+  assert.equal(editor.getValue(), source);
+
+  // Switch to split
+  modeSelect.value = 'split';
+  modeSelect.dispatchEvent(new dom.window.Event('change'));
+  assert.equal(preview.hidden, false);
+  assert.equal(splitControl.hidden, false);
+  assert.equal(editor.getValue(), source);
+
+  // Switch back to editor
+  modeSelect.value = 'editor';
+  modeSelect.dispatchEvent(new dom.window.Event('change'));
+  assert.equal(preview.hidden, true);
+  assert.equal(splitControl.hidden, true);
+  assert.equal(editor.getValue(), source);
+
   dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
 });
 
-test('Live editor uses one Enter for a line break without creating an empty paragraph', () => {
-  const dom = new JSDOM('<section id="editor"></section>',{url:'https://example.test/helper/'});
-  const names=['window','document'];
+test('Split slider affects only split mode and editor preferences are restored from localStorage', () => {
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const names=['window','document','localStorage'];
   const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
-  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
-  const host=document.querySelector('#editor');
-  const editor=attachEditor(host,{value:'**Пенис**'});
-  const block=host.querySelector('.live-block'); block.click(); const input=host.querySelector('.live-block textarea');
-  input.setSelectionRange(input.value.length,input.value.length);
-  input.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
-  input.setRangeText('**Не Пенис**',input.selectionStart,input.selectionEnd,'end');
-  input.dispatchEvent(new dom.window.Event('input',{bubbles:true}));
-  assert.equal(editor.getValue(),'**Пенис**\n**Не Пенис**');
-  assert.equal(host.querySelectorAll('.live-block').length,1);
-  assert.doesNotMatch(host.textContent,/Абзац|Пустая строка/);
+  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
+
+  dom.window.localStorage.setItem('helper:editor:view', 'split');
+  dom.window.localStorage.setItem('helper:editor:split', '65');
+
+  const host = document.querySelector('#editor');
+  attachEditor(host, { value: 'Тестовый текст' });
+  const editorBox = host.querySelector('.editor');
+  const splitControl = host.querySelector('.split-control');
+  const splitInput = splitControl.querySelector('input');
+
+  assert.equal(splitControl.hidden, false);
+  assert.equal(splitInput.value, '65');
+  assert.match(editorBox.style.gridTemplateColumns, /65fr/);
+
+  // Adjust slider
+  splitInput.value = '40';
+  splitInput.dispatchEvent(new dom.window.Event('input'));
+  assert.match(editorBox.style.gridTemplateColumns, /40fr/);
+  assert.equal(dom.window.localStorage.getItem('helper:editor:split'), '40');
+
+  dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
+});
+
+test('Enter/list behavior continues list item and does not lose text', () => {
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const names=['window','document','localStorage'];
+  const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
+  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
+
+  const host = document.querySelector('#editor');
+  const editor = attachEditor(host, { value: '- [ ] Первая задача' });
+  const textarea = host.querySelector('textarea');
+  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  textarea.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+  assert.equal(editor.getValue(), '- [ ] Первая задача\n- [ ] ');
+
+  // Pressing Enter on empty list item exits list
+  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  textarea.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  assert.equal(editor.getValue(), '- [ ] Первая задача\n');
+
+  dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
+});
+
+test('Preview checklist renders, toggles state, and supports undo/redo', () => {
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const names=['window','document','localStorage'];
+  const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
+  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
+
+  const host = document.querySelector('#editor');
+  attachEditor(host, { value: '- [ ] Сделать дело' });
+  const checkbox = host.querySelector('.preview input[type="checkbox"]');
+  assert.ok(checkbox);
+  checkbox.click();
+  assert.equal(host.querySelector('textarea').value, '- [x] Сделать дело');
+
+  // Undo
+  host.querySelector('textarea').dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+  assert.equal(host.querySelector('textarea').value, '- [ ] Сделать дело');
+
+  // Redo
+  host.querySelector('textarea').dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, shiftKey: true, bubbles: true }));
+  assert.equal(host.querySelector('textarea').value, '- [x] Сделать дело');
+
   dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
 });
 

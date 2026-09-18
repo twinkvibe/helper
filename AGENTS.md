@@ -30,7 +30,10 @@ Use `npm install` only when dependencies change. Do not commit `.env.local`, `di
 
 - `src/main.js`: application boot, authentication lifecycle, session expiry handling, top-level navigation, account and admin views.
 - `src/workbench.js`: task and note workflows, filters, links, local persistence, import/export, and task details.
-- `src/editor.js`: Markdown toolbar, shortcuts, split view, live block editor, and image insertion.
+- `src/articles.js`: publication management, public article and author profile rendering, cover upload and image insertion.
+- `src/editor.js`: Markdown toolbar (format and view groups), shortcuts, editor and split modes, and image insertion.
+- `src/image-editor.js`: canvas-based image cropper with zoom and pan for avatars (1:1) and article covers (16:9).
+- `src/router.js`: route resolution (public profiles, articles, admin), navigation links, and brand HTML helper.
 - `src/security.js`: Markdown sanitization and auth storage adapter.
 - `src/diagram.js`: lazy Mermaid rendering and SVG sanitization.
 - `src/notes.js`: note persistence, legacy migration, tag parsing, and task filtering.
@@ -38,7 +41,7 @@ Use `npm install` only when dependencies change. Do not commit `.env.local`, `di
 - `src/workbench.css`: task, note, editor, dialog, and responsive styles.
 - `supabase/schema.sql`: full schema for a brand-new project only.
 - `supabase/migrations/`: ordered, append-only SQL changes for an existing project.
-- `supabase/functions/account/index.ts`: authenticated privileged operations.
+- `supabase/functions/account/index.ts`: authenticated privileged operations (user management, roles, deletions, article moderation, and audit logs).
 - `.github/workflows/pages.yml`: tests, production build, and GitHub Pages deployment.
 
 Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before changing data ownership, authentication, Markdown storage, or task-note linking. Read [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) before changing the database or deployment.
@@ -70,7 +73,7 @@ Tasks and notes connect in two ways:
 
 The note UUID is browser-local. Another device may see a task's note link but not possess that note. Preserve the explanatory unavailable state.
 
-The single-window editor edits semantic Markdown blocks rather than visual lines. Clicking a rendered block reveals its source; leaving it renders that block again. Preserve whole list, table, quote, and fenced-code blocks so Markdown structure stays valid.
+The editor operates directly on the Markdown source with two modes: «Редактор» (compact single-pane editing with formatting toolbar) and «Редактор + просмотр» (split view with a live rendered preview and resizable pane slider). Whole Markdown structures (lists, tables, quotes, code fences) are preserved on edit.
 
 ## Database changes
 
