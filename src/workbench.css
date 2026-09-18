@@ -808,12 +808,6 @@
   background: rgb(255 255 255 / 0.025);
 }
 
-.live-editor > .quiet {
-  margin: 8px 3px;
-  border: 1px dashed #9eb675;
-  color: #527026;
-}
-
 .editor-footer {
   display: flex;
   align-items: center;

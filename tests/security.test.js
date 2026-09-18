@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { renderMarkdown, sessionStorageAdapter } from '../src/security.js';
+import { publicArticleSlug, articleHash } from '../src/articles.js';
 test('Markdown strips active content and permits safe images and checklists',()=>{
  const {window}=new JSDOM('');
  const html=renderMarkdown('# Hello\n\n**bold**\n\n- [ ] item\n\n![local](/image/example.png)\n\n<script>alert(1)</script><img src="https://images.test/x.png" onerror="alert(1)"><iframe src="https://evil.test"></iframe><a href="javascript:alert(1)">bad</a><svg onload="alert(1)"></svg><form><input autofocus onfocus="alert(1)"></form>',window);
@@ -12,6 +13,12 @@ test('Markdown strips active content and permits safe images and checklists',()=
  assert.doesNotMatch(html,/<input[^>]*disabled/);
  assert.doesNotMatch(html,/<script|<iframe|<svg|<form|onerror|onload|javascript:/i);
 });
+test('Public article links use a hash and decode safely',()=>{
+ assert.equal(articleHash('komandy-bota'),'#article=komandy-bota');
+ assert.equal(publicArticleSlug('#article=komandy-bota'),'komandy-bota');
+ assert.equal(publicArticleSlug('#article=%D0%BA%D0%BE%D0%BC%D0%B0%D0%BD%D0%B4%D1%8B'),'команды');
+ assert.equal(publicArticleSlug('#article=x&evil=1'),null);
+});
 test('CommonMark emphasis stays semantic and image dimensions are applied',()=>{
  const {window}=new JSDOM('');
  const html=renderMarkdown('_You **can** combine them_\n\n![Фото|320x180](https://images.test/photo.png)',window);
@@ -19,6 +26,11 @@ test('CommonMark emphasis stays semantic and image dimensions are applied',()=>{
  assert.doesNotMatch(html,/<a[^>]*>You/);
  assert.match(html,/<img[^>]*width="320"[^>]*height="180"/);
  assert.match(html,/alt="Фото"/);
+});
+test('A single newline is visible as a line break in formatted text',()=>{
+ const {window}=new JSDOM('');
+ const html=renderMarkdown('**Пенис**\n**Не Пенис**',window);
+ assert.match(html,/<strong>Пенис<\/strong><br>\n?<strong>Не Пенис<\/strong>/);
 });
 test('Markdown keeps emphasis semantics',()=>{
   const {window}=new JSDOM('');

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { sessionStorageAdapter } from './security.js';
 import { mountWorkbench } from './workbench.js';
+import { mountArticles, publicArticleSlug, renderPublicArticle } from './articles.js';
 import { icon } from './icons.js';
 import './style.css';
 import './workbench.css';
@@ -79,11 +80,11 @@ function shell() {
  if(cleanupView && cleanupView() === false) return;
  cleanupView = null;
  generation++;
- root.innerHTML = `<div class="workspace"><aside><a class="brand" href="./">h<span>elper</span><i>✳</i></a><nav>${[['todos','tasks','Задачи'],['markdown','note','Заметки'],['settings','settings','Аккаунт'],...(profile.role==='admin'?[['admin','users','Админка']]:[])].map(([id,iconName,title])=>`<button data-page="${id}" class="nav ${page===id?'active':''}" ${profile.must_change_password && id!=='settings'?'disabled':''}><span data-nav-icon="${iconName}"></span>${title}</button>`).join('')}</nav><div class="account"><strong>${escape(profile.username)}</strong><small>${profile.role==='admin'?'Администратор':'Участник'}</small><button id="logout" class="quiet"><span data-nav-icon="logout"></span>Выйти</button></div></aside><main class="content"><p id="notice" class="notice" role="status" aria-live="polite"></p><section id="view"></section></main></div>`;
+ root.innerHTML = `<div class="workspace"><aside><a class="brand" href="./">h<span>elper</span><i>✳</i></a><nav>${[['todos','tasks','Задачи'],['markdown','note','Заметки'],['articles','articles','Публикации'],['settings','settings','Аккаунт'],...(profile.role==='admin'?[['admin','users','Админка']]:[])].map(([id,iconName,title])=>`<button data-page="${id}" class="nav ${page===id?'active':''}" ${profile.must_change_password && id!=='settings'?'disabled':''}><span data-nav-icon="${iconName}"></span>${title}</button>`).join('')}</nav><div class="account"><strong>${escape(profile.username)}</strong><small>${profile.role==='admin'?'Администратор':'Участник'}</small><button id="logout" class="quiet"><span data-nav-icon="logout"></span>Выйти</button></div></aside><main class="content"><p id="notice" class="notice" role="status" aria-live="polite"></p><section id="view"></section></main></div>`;
  document.querySelectorAll('[data-nav-icon]').forEach(slot=>slot.replaceChildren(icon(slot.dataset.navIcon)));
  document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{const next=b.dataset.page;if(next===page)return;if(cleanupView&&cleanupView()===false)return;cleanupView=null;page=next;shell();});
  $('logout').onclick=async()=>{if(cleanupView&&cleanupView()===false)return;cleanupView=null;const {error}=await client.auth.signOut({scope:'local'});if(error){shell();notice('Не удалось выйти. Повтори попытку.',true);return;}login();};
- ({todos,markdown,settings,admin:adminPage})[page]();
+ ({todos,markdown,articles,settings,admin:adminPage})[page]();
 }
 async function todos() {
  cleanupView = mountWorkbench($('view'), {client, userId:user.id, initial:'todos', notice, requireSession});
@@ -91,6 +92,7 @@ async function todos() {
 function markdown(){
  cleanupView = mountWorkbench($('view'), {client, userId:user.id, initial:'markdown', notice, requireSession});
 }
+function articles(){ cleanupView = mountArticles($('view'), {client, userId:user.id, username:profile.username, notice, requireSession}); }
 function settings(){
  $('view').innerHTML=`<div class="title"><div><h1>Аккаунт</h1><p class="muted">${profile.must_change_password?'Для продолжения замени временный пароль.':'Здесь можно изменить пароль.'}</p></div></div><form id="password" class="panel narrow"><label>Текущий пароль<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>Новый пароль<input name="password" type="password" minlength="9" maxlength="128" autocomplete="new-password" required></label><label>Повтори новый пароль<input name="repeat" type="password" minlength="9" maxlength="128" autocomplete="new-password" required></label><small>От 9 до 128 символов.</small><button class="primary">Изменить пароль</button></form>`;
  busy($('password'),async f=>{if(f.get('password')!==f.get('repeat'))throw new Error('Пароли не совпадают.');await action({action:'password',currentPassword:f.get('currentPassword'),password:f.get('password')});page='todos';await enter(user);notice('Пароль изменён.');});
@@ -113,6 +115,8 @@ async function boot(){
   document.addEventListener('visibilitychange',checkWhenActive);
   window.addEventListener('focus',checkWhenActive);
   root.innerHTML='<main class="login-card"><h1>helper ✳</h1><p>Открываем пространство…</p></main>';
+  const publicSlug=publicArticleSlug();
+  if(publicSlug){await renderPublicArticle(root,client,publicSlug);return;}
   const {data:{session}}=await client.auth.getSession();
   if(session){scheduleSessionCheck(session);const {data:{user:verified},error}=await client.auth.getUser();if(error || !verified){authMessage='Сессия истекла. Войди снова.';await client.auth.signOut({scope:'local'});login();}else await enter(verified);}else login();
  }catch{root.innerHTML='<main class="login-card"><h1>Не удалось открыть Helper</h1><p>Проверь подключение и разреши хранение данных сайта, затем обнови страницу.</p></main>';}

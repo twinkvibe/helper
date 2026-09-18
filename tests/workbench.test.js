@@ -69,6 +69,25 @@ test('Single-window editor renders checklist items, toggles them, and supports u
   dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
 });
 
+test('Live editor uses one Enter for a line break without creating an empty paragraph', () => {
+  const dom = new JSDOM('<section id="editor"></section>',{url:'https://example.test/helper/'});
+  const names=['window','document'];
+  const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
+  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
+  const host=document.querySelector('#editor');
+  const editor=attachEditor(host,{value:'**Пенис**'});
+  const block=host.querySelector('.live-block'); block.click(); const input=host.querySelector('.live-block textarea');
+  input.setSelectionRange(input.value.length,input.value.length);
+  input.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+  input.setRangeText('\n',input.selectionStart,input.selectionEnd,'end');
+  input.setRangeText('**Не Пенис**',input.selectionStart,input.selectionEnd,'end');
+  input.dispatchEvent(new dom.window.Event('input',{bubbles:true}));
+  assert.equal(editor.getValue(),'**Пенис**\n**Не Пенис**');
+  assert.equal(host.querySelectorAll('.live-block').length,1);
+  assert.doesNotMatch(host.textContent,/Абзац|Пустая строка/);
+  dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
+});
+
 test('Workbench checks the session before loading and separates task states', async () => {
   const dom=new JSDOM('<section id="view"></section>',{url:'https://example.test/helper/'});
   const names=['window','document','localStorage','location'];

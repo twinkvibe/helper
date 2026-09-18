@@ -21,7 +21,7 @@ export function renderMarkdown(source, windowObject = window) {
       node.removeAttribute('disabled');
     }
   });
-  return purifier.sanitize(marked.parse(source, { async: false }), {
+  return purifier.sanitize(marked.parse(source, { async: false, breaks: true }), {
     ALLOWED_TAGS: ['p','br','hr','h1','h2','h3','h4','h5','h6','strong','em','del','blockquote','ul','ol','li','pre','code','a','table','thead','tbody','tr','th','td','img','input'],
     ALLOWED_ATTR: ['href','title','src','alt','width','height','type','checked','disabled'],
     ALLOW_DATA_ATTR: false,
