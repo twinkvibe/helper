@@ -5,6 +5,7 @@ create table public.profiles (
  role text not null default 'member' check(role in ('admin','member')),
  blocked boolean not null default false,
  must_change_password boolean not null default true,
+ avatar_url text check(avatar_url is null or avatar_url ~ '^https://'),
  created_at timestamptz not null default now()
 );
 alter table public.profiles enable row level security;
@@ -40,6 +41,8 @@ create table public.articles (
  excerpt text not null default '' check(char_length(excerpt) <= 220),
  cover_url text check(cover_url is null or cover_url ~ '^https://'),
  author_name text not null check(char_length(author_name) between 3 and 32),
+ author_avatar_url text,
+ access text not null default 'private' check(access in ('public','unlisted','private')),
  published boolean not null default false,
  published_at timestamptz,
  created_at timestamptz not null default now(),
@@ -50,7 +53,7 @@ alter table public.articles enable row level security;
 revoke all on public.articles from anon, authenticated;
 grant select on public.articles to anon, authenticated;
 grant insert, update, delete on public.articles to authenticated;
-create policy "Anyone reads published articles" on public.articles for select using(published = true);
+create policy "Anyone reads public or unlisted articles" on public.articles for select using(access in ('public','unlisted'));
 create policy "Active users manage own articles" on public.articles for all to authenticated
  using(user_id = (select auth.uid()) and exists(select 1 from public.profiles where id = (select auth.uid()) and not blocked and not must_change_password))
  with check(user_id = (select auth.uid()) and exists(select 1 from public.profiles where id = (select auth.uid()) and not blocked and not must_change_password));
@@ -76,6 +79,13 @@ end; $$;
 create trigger todos_audit_log after insert or update or delete on public.todos for each row execute function public.log_data_change();
 create trigger articles_audit_log after insert or update or delete on public.articles for each row execute function public.log_data_change();
 create index audit_logs_recent on public.audit_logs(created_at desc);
+create or replace function public.set_profile_avatar(avatar text) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if avatar is not null and avatar !~ '^https://' then raise exception 'Некорректный URL аватарки'; end if;
+  update public.profiles set avatar_url=avatar where id=auth.uid();
+end; $$;
+revoke all on function public.set_profile_avatar(text) from public;
+grant execute on function public.set_profile_avatar(text) to authenticated;
 create or replace function public.record_client_error(error_message text, error_context text default '') returns void language plpgsql security definer set search_path = public as $$
 begin
  insert into public.audit_logs(actor_id, action, entity, details) values(auth.uid(), 'error', 'client', jsonb_build_object('message', left(coalesce(error_message,''),500), 'context', left(coalesce(error_context,''),120)));
@@ -84,7 +94,7 @@ revoke all on function public.record_client_error(text,text) from public;
 grant execute on function public.record_client_error(text,text) to authenticated;
 create or replace function public.set_article_author_name() returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  select username into new.author_name from public.profiles where id = new.user_id;
+  select username, avatar_url into new.author_name, new.author_avatar_url from public.profiles where id = new.user_id;
   return new;
 end; $$;
 create trigger articles_author_name before insert or update on public.articles for each row execute function public.set_article_author_name();
