@@ -187,7 +187,7 @@ export async function renderPublicProfile(host, client, username) {
   } else {
     const { data: directProf } = await client
       .from('profiles')
-      .select('username,display_name,avatar_url')
+      .select('username,display_name,avatar_url,bio')
       .eq('username', username)
       .eq('blocked', false)
       .maybeSingle();
@@ -245,6 +245,7 @@ export async function renderPublicProfile(host, client, username) {
           <div class="author-meta">
             <h1>${escapeHtml(displayName)}</h1>
             <span class="handle">@${escapeHtml(profile.username)}</span>
+            ${profile.bio ? `<p class="author-bio">${escapeHtml(profile.bio)}</p>` : ''}
           </div>
         </section>
         <section class="author-articles-section">

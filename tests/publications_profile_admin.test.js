@@ -318,3 +318,42 @@ test('Active admin DB invariant trigger rejects demoting, blocking, or deleting 
   assert.doesNotThrow(() => triggerEnsureActiveAdminExists('UPDATE', dbProfiles[1], { ...dbProfiles[1], blocked: true }));
 });
 
+test('Profile bio validation accepts up to 280 characters and get_public_profile projects it', () => {
+  const validateBio = (raw) => {
+    if (raw === null || raw === undefined) return null;
+    const clean = String(raw).trim();
+    if (!clean) return null;
+    if (clean.length > 280) throw new Error('Био не может превышать 280 символов');
+    return clean;
+  };
+
+  assert.equal(validateBio('Коротко о себе'), 'Коротко о себе');
+  assert.equal(validateBio('   С пробелами   '), 'С пробелами');
+  assert.equal(validateBio(''), null);
+  assert.equal(validateBio('   '), null);
+  assert.equal(validateBio(null), null);
+  assert.equal(validateBio('x'.repeat(280)), 'x'.repeat(280));
+  assert.throws(() => validateBio('x'.repeat(281)), /Био не может превышать 280 символов/);
+
+  const profileWithBio = {
+    username: 'dustin',
+    display_name: 'Dustin Corder',
+    avatar_url: 'https://example.com/avatar.jpg',
+    bio: 'Разработчик и автор заметок',
+    role: 'user',
+    blocked: false,
+  };
+
+  const project = (p) => (!p || p.blocked ? null : {
+    username: p.username,
+    display_name: p.display_name,
+    avatar_url: p.avatar_url,
+    bio: p.bio || null,
+  });
+
+  const projected = project(profileWithBio);
+  assert.equal(projected.bio, 'Разработчик и автор заметок');
+  assert.equal(projected.role, undefined);
+});
+
+

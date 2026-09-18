@@ -1422,6 +1422,15 @@ header {
   color: var(--text-muted);
 }
 
+.author-bio {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .author-articles-section h2 {
   font-size: 18px;
   font-weight: 650;
