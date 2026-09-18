@@ -28,6 +28,13 @@ export function editImage(file, { aspectRatio = 1, outputWidth = 512, outputHeig
     };
 
     img.onload = () => {
+      // If no explicit ratio, preserve the image's natural aspect ratio
+      const effectiveAspect = (aspectRatio !== null && aspectRatio !== undefined && aspectRatio > 0)
+        ? aspectRatio
+        : img.naturalWidth / img.naturalHeight || 1;
+      const effectiveOutputH = (aspectRatio !== null && aspectRatio !== undefined && aspectRatio > 0)
+        ? outputHeight
+        : Math.round(outputWidth / effectiveAspect);
       const modal = document.createElement('div');
       modal.className = 'image-editor-modal dialog-scrim';
       modal.setAttribute('role', 'dialog');
@@ -74,12 +81,13 @@ export function editImage(file, { aspectRatio = 1, outputWidth = 512, outputHeig
       // Crop viewport sizing
       const maxViewportW = Math.min(window.innerWidth - 64, 520);
       const viewportW = Math.max(260, maxViewportW);
-      const viewportH = Math.round(viewportW / aspectRatio);
+      const viewportH = Math.round(viewportW / effectiveAspect);
 
       cropContainer.style.width = `${viewportW}px`;
-      cropContainer.style.height = `${viewportH}px`;
+      const canvasH = Math.min(viewportH, Math.round(window.innerHeight * 0.7));
+      cropContainer.style.height = `${canvasH}px`;
       canvas.width = viewportW;
-      canvas.height = viewportH;
+      canvas.height = canvasH;
 
       // Fit image initially so it covers the entire crop box
       const baseScale = Math.max(viewportW / img.width, viewportH / img.height);
@@ -205,16 +213,16 @@ export function editImage(file, { aspectRatio = 1, outputWidth = 512, outputHeig
         const srcX = -panX / curScale;
         const srcY = -panY / curScale;
         const srcW = viewportW / curScale;
-        const srcH = viewportH / curScale;
+        const srcH = canvasH / curScale;
 
         const outCanvas = document.createElement('canvas');
         outCanvas.width = outputWidth;
-        outCanvas.height = outputHeight;
+        outCanvas.height = effectiveOutputH;
         const outCtx = outCanvas.getContext('2d');
 
         outCtx.imageSmoothingEnabled = true;
         outCtx.imageSmoothingQuality = 'high';
-        outCtx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, outputWidth, outputHeight);
+        outCtx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, outputWidth, effectiveOutputH);
 
         const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
         outCanvas.toBlob(

@@ -180,3 +180,54 @@ test('Workbench checks the session before loading and separates task states', as
   assert.match(document.querySelector('#tasks').textContent,/Выполненные · 1/);
   cleanup(true);dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
 });
+
+test('Editor initial mount does not fire onChange — no false dirty-state', () => {
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const names=['window','document','localStorage'];
+  const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
+  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
+
+  let changeCount = 0;
+  const host = document.querySelector('#editor');
+  attachEditor(host, { value: 'начальный текст', onChange: () => changeCount++ });
+  assert.equal(changeCount, 0, 'onChange must not fire on initial mount');
+
+  // Simulate user input — must fire exactly once
+  const textarea = host.querySelector('textarea');
+  textarea.value = 'начальный текст и ещё';
+  textarea.dispatchEvent(new dom.window.Event('input'));
+  assert.equal(changeCount, 1, 'onChange must fire once after user input');
+
+  dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
+});
+
+test('Preview mode hides textarea and shows rendered Markdown; editor mode restores textarea', () => {
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const names=['window','document','localStorage'];
+  const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
+  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
+
+  const host = document.querySelector('#editor');
+  attachEditor(host, { value: '# Заголовок' });
+  const modeSelect = host.querySelector('.mode-select');
+  const textarea = host.querySelector('textarea');
+  const preview = host.querySelector('.preview');
+
+  // Initial state: editor mode
+  assert.equal(textarea.hidden, false, 'textarea visible initially');
+  assert.equal(preview.hidden, true, 'preview hidden initially');
+
+  // Switch to preview
+  modeSelect.value = 'preview';
+  modeSelect.dispatchEvent(new dom.window.Event('change'));
+  assert.equal(textarea.hidden, true, 'textarea hidden in preview mode');
+  assert.equal(preview.hidden, false, 'preview visible in preview mode');
+
+  // Switch back to editor
+  modeSelect.value = 'editor';
+  modeSelect.dispatchEvent(new dom.window.Event('change'));
+  assert.equal(textarea.hidden, false, 'textarea visible after returning to editor mode');
+  assert.equal(preview.hidden, true, 'preview hidden after returning to editor mode');
+
+  dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
+});

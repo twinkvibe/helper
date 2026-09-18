@@ -3,7 +3,7 @@ import { sessionStorageAdapter } from './security.js';
 import { mountWorkbench } from './workbench.js';
 import { mountArticles, publicArticleSlug, renderPublicArticle, renderPublicProfile } from './articles.js';
 import { icon } from './icons.js';
-import { parseRoute, sanitizeNext, pageHref, brandHtml } from './router.js';
+import { parseRoute, sanitizeNext, pageHref, brandHtml, appPath } from './router.js';
 import { editImage } from './image-editor.js';
 import './style.css';
 import './workbench.css';
@@ -55,7 +55,7 @@ async function expireSession(message = 'Сессия истекла. Войди 
       cleanupView = null;
       generation++;
       if (parseRoute(location.pathname).type !== 'login') {
-        location.replace('./login');
+        location.replace(appPath('login'));
       } else {
         login();
       }
@@ -355,7 +355,7 @@ function shell() {
       signingOut = false;
     }
     if (parseRoute(location.pathname).type !== 'login') {
-      location.replace('./login');
+      location.replace(appPath('login'));
     } else {
       login();
     }
@@ -385,20 +385,16 @@ async function logs() {
         <p class="muted">Изменения задач и публикаций, записанные на сервере.</p>
       </div>
     </div>
-    <div class="audit-note">IP входов и полный журнал авторизации находятся в Supabase → Authentication → Logs.</div>
+    <div class="audit-note">ИП входов и полный журнал авторизации находятся в Supabase → Authentication → Logs.</div>
     <div id="audit" class="audit-list">Загружаем…</div>
   `;
   try {
     await requireSession();
-    const { data, error } = await client
-      .from('audit_logs')
-      .select('id,actor_id,action,entity,entity_id,details,created_at')
-      .order('created_at', { ascending: false })
-      .limit(300);
-    if (error) throw error;
+    const res = await action({ action: 'logs:list' });
+    const data = res.logs || [];
     const list = $('audit');
     list.replaceChildren();
-    if (!data?.length) {
+    if (!data.length) {
       list.textContent = 'Записей пока нет.';
       return;
     }
@@ -407,8 +403,11 @@ async function logs() {
       row.className = 'audit-row';
       const title = document.createElement('strong');
       title.textContent = `${item.action} · ${item.entity}`;
+      const actorName = item.actor
+        ? (item.actor.display_name || `@${item.actor.username}`)
+        : (item.actor_id ? item.actor_id.slice(0, 8) : 'система');
       const meta = document.createElement('small');
-      meta.textContent = `${new Date(item.created_at).toLocaleString('ru-RU')} · ${item.actor_id || 'система'}${item.entity_id ? ` · ${item.entity_id}` : ''}`;
+      meta.textContent = `${new Date(item.created_at).toLocaleString('ru-RU')} · ${actorName}${item.entity_id ? ` · ${item.entity_id}` : ''}`;
       const details = document.createElement('p');
       details.textContent = Object.entries(item.details || {}).map(([k, v]) => `${k}: ${String(v)}`).join(' · ');
       row.append(title, meta, details);
@@ -422,9 +421,18 @@ async function logs() {
 
 function settings() {
   const displayName = profile.display_name || '';
+  const bio = profile.bio || '';
   const avatarImg = profile.avatar_url && /^https:\/\//i.test(profile.avatar_url)
     ? `<img class="avatar-preview-lg" src="${escape(profile.avatar_url)}" alt="Аватар">`
     : `<div class="avatar-preview-lg admin-avatar-box" style="width: 52px; height: 52px; font-size: 20px;">${escape((displayName || profile.username || 'U')[0].toUpperCase())}</div>`;
+
+  const previewName = escape(displayName || profile.username);
+  const previewHandle = escape('@' + profile.username);
+  const previewBio = escape(bio);
+  const previewAvatar = profile.avatar_url && /^https:\/\//i.test(profile.avatar_url)
+    ? `<img class="author-avatar-xl" src="${escape(profile.avatar_url)}" alt="" referrerpolicy="no-referrer" style="width:64px;height:64px;border-radius:50%;object-fit:cover;">`
+    : `<div class="admin-avatar-box" style="width:64px;height:64px;font-size:26px;border-radius:50%;">${escape((displayName || profile.username || 'U')[0].toUpperCase())}</div>`;
+  const base = (import.meta.env?.BASE_URL || '/helper/').replace(/\/+$/, '') + '/';
 
   $('view').innerHTML = `
     <div class="title">
@@ -433,36 +441,76 @@ function settings() {
         <p class="muted">${profile.must_change_password ? 'Для продолжения замени временный пароль.' : 'Управление профилем и безопасность.'}</p>
       </div>
     </div>
-    <div class="settings-stack">
-      <section class="panel">
-        <h3>Профиль</h3>
-        <div class="profile-avatar-row" style="margin-bottom: 20px;">
-          ${avatarImg}
-          <div class="profile-avatar-actions">
-            <button type="button" class="secondary" id="change-avatar-btn">Изменить фото</button>
-            <input type="file" id="avatar-file-input" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-            ${profile.avatar_url ? '<button type="button" class="danger quiet" id="delete-avatar-btn">Удалить фото</button>' : ''}
+    <div class="settings-layout">
+      <div class="settings-left">
+        <section class="panel">
+          <h3>Профиль</h3>
+          <div class="profile-avatar-row" style="margin-bottom: 20px;">
+            ${avatarImg}
+            <div class="profile-avatar-actions">
+              <button type="button" class="secondary" id="change-avatar-btn">Изменить фото</button>
+              <input type="file" id="avatar-file-input" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+              ${profile.avatar_url ? '<button type="button" class="danger quiet" id="delete-avatar-btn">Удалить фото</button>' : ''}
+            </div>
           </div>
-        </div>
-        <form id="profile-name-form">
-          <label>Отображаемое имя
-            <input name="displayName" maxlength="80" placeholder="Например, Иван Иванов" value="${escape(displayName)}">
-            <small class="muted" style="display: block; margin-top: 4px;">Логин: @${escape(profile.username)} (используется для входа и ссылок, не меняется)</small>
-          </label>
-          <button class="primary" style="margin-top: 12px;">Сохранить имя</button>
-        </form>
-      </section>
+          <form id="profile-name-form">
+            <label>Отображаемое имя
+              <input name="displayName" maxlength="80" placeholder="Например, Иван Иванов" value="${escape(displayName)}">
+              <small class="muted" style="display: block; margin-top: 4px;">Логин: @${escape(profile.username)} (используется для входа и ссылок, не меняется)</small>
+            </label>
+            <label style="margin-top:12px;">О себе
+              <textarea name="bio" maxlength="280" rows="3" placeholder="Коротко о себе (до 280 символов)…" style="resize:vertical;">${escape(bio)}</textarea>
+              <small class="muted" id="bio-counter" style="display:block;margin-top:4px;text-align:right;">${bio.length}/280</small>
+            </label>
+            <button class="primary" style="margin-top: 12px;">Сохранить</button>
+          </form>
+        </section>
 
-      <form id="password" class="panel">
-        <h3>Безопасность</h3>
-        <label>Текущий пароль<input name="currentPassword" type="password" autocomplete="current-password" required></label>
-        <label>Новый пароль<input name="password" type="password" minlength="9" maxlength="128" autocomplete="new-password" required></label>
-        <label>Повтори новый пароль<input name="repeat" type="password" minlength="9" maxlength="128" autocomplete="new-password" required></label>
-        <small>От 9 до 128 символов.</small>
-        <button class="primary" style="margin-top: 12px;">Изменить пароль</button>
-      </form>
+        <form id="password" class="panel">
+          <h3>Безопасность</h3>
+          <label>Текущий пароль<input name="currentPassword" type="password" autocomplete="current-password" required></label>
+          <label>Новый пароль<input name="password" type="password" minlength="9" maxlength="128" autocomplete="new-password" required></label>
+          <label>Повтори новый пароль<input name="repeat" type="password" minlength="9" maxlength="128" autocomplete="new-password" required></label>
+          <small>От 9 до 128 символов.</small>
+          <button class="primary" style="margin-top: 12px;">Изменить пароль</button>
+        </form>
+      </div>
+
+      <div class="settings-right">
+        <section class="panel" id="profile-preview-panel">
+          <h3>Превью публичного профиля</h3>
+          <div class="profile-preview">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
+              ${previewAvatar}
+              <div>
+                <div id="preview-name" style="font-weight:700;font-size:17px;">${previewName}</div>
+                <div id="preview-handle" class="muted" style="font-size:13px;">${previewHandle}</div>
+              </div>
+            </div>
+            <div id="preview-bio" class="muted" style="font-size:14px;white-space:pre-wrap;">${previewBio}</div>
+            <a href="${base}u/${escape(profile.username)}" target="_blank" rel="noopener" class="quiet" style="display:inline-flex;margin-top:14px;font-size:13px;">Открыть публичный профиль ↗</a>
+          </div>
+        </section>
+      </div>
     </div>
   `;
+
+  // Live preview update
+  const nameInput = $('profile-name-form').elements.displayName;
+  const bioTextarea = $('profile-name-form').elements.bio;
+  const bioCounter = $('bio-counter');
+  const previewNameEl = $('preview-name');
+  const previewBioEl = $('preview-bio');
+
+  nameInput.oninput = () => {
+    const val = nameInput.value.trim() || profile.username;
+    if (previewNameEl) previewNameEl.textContent = val;
+  };
+  bioTextarea.oninput = () => {
+    const len = bioTextarea.value.length;
+    if (bioCounter) bioCounter.textContent = `${len}/280`;
+    if (previewBioEl) previewBioEl.textContent = bioTextarea.value;
+  };
 
   // Avatar change via Cropper
   const changeAvatarBtn = $('change-avatar-btn');
@@ -523,14 +571,22 @@ function settings() {
     };
   }
 
-  // Display name submit
+  // Display name + bio submit
   busy($('profile-name-form'), async f => {
     const newName = String(f.get('displayName') || '').trim();
     if (newName.length > 80) throw new Error('Отображаемое имя не может превышать 80 символов.');
+    const newBio = String(f.get('bio') || '').trim();
+    if (newBio.length > 280) throw new Error('Био не может превышать 280 символов.');
     const res = await client.rpc('set_profile_display_name', { new_display_name: newName || null });
     if (res.error) throw res.error;
+    // Bio RPC — graceful degradation if migration not yet applied
+    if (newBio !== (profile.bio || '')) {
+      const bioRes = await client.rpc('set_profile_bio', { new_bio: newBio || null });
+      if (bioRes.error && bioRes.error.code !== '42883') throw bioRes.error; // 42883 = function not found
+    }
     profile.display_name = newName || null;
-    notice('Имя профиля сохранено.');
+    profile.bio = newBio || null;
+    notice('Профиль сохранён.');
     shell();
   });
 
@@ -937,13 +993,13 @@ async function boot() {
         } finally {
           signingOut = false;
         }
-        if (route.type !== 'login') location.replace('./login');
+        if (route.type !== 'login') location.replace(appPath('login'));
         else login();
       } else {
         if (route.type === 'login') {
           const params = new URLSearchParams(location.search);
           const next = sanitizeNext(params.get('next'));
-          location.replace(next || './');
+          location.replace(next || appPath(''));
           return;
         }
         page = route.page || 'todos';
@@ -952,7 +1008,7 @@ async function boot() {
     } else {
       if (route.type === 'private') {
         const nextParam = location.pathname + location.search;
-        location.replace(`./login?next=${encodeURIComponent(nextParam)}`);
+        location.replace(appPath(`login?next=${encodeURIComponent(nextParam)}`));
         return;
       }
       login();

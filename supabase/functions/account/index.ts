@@ -78,6 +78,33 @@ Deno.serve(async (req) => {
     // Admin privileges required for all subsequent operations
     if (me.role !== 'admin' || me.must_change_password) return reply(403, { error: 'Нужны права администратора' });
 
+    // List audit logs with enriched actor identity
+    if (body.action === 'logs:list') {
+      const { data: logs, error: logsError } = await admin
+        .from('audit_logs')
+        .select('id,actor_id,action,entity,entity_id,details,created_at')
+        .order('created_at', { ascending: false })
+        .limit(300);
+      if (logsError) throw logsError;
+
+      const actorIds = [...new Set((logs || []).map((l: any) => l.actor_id).filter(Boolean))];
+      const actorMap = new Map<string, { username: string; display_name: string | null; avatar_url: string | null }>();
+      if (actorIds.length > 0) {
+        const { data: actors } = await admin
+          .from('profiles')
+          .select('id,username,display_name,avatar_url')
+          .in('id', actorIds);
+        for (const a of actors || []) {
+          actorMap.set(a.id, { username: a.username, display_name: a.display_name, avatar_url: a.avatar_url });
+        }
+      }
+      const enriched = (logs || []).map((l: any) => ({
+        ...l,
+        actor: l.actor_id ? (actorMap.get(l.actor_id) || null) : null,
+      }));
+      return reply(200, { logs: enriched });
+    }
+
     // List all users
     if (body.action === 'list') {
       const { data, error } = await admin

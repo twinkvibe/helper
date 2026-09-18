@@ -7,6 +7,7 @@ create table public.profiles (
  must_change_password boolean not null default true,
  display_name text check(display_name is null or char_length(trim(display_name)) between 1 and 80),
  avatar_url text check(avatar_url is null or avatar_url ~ '^https://'),
+ bio text constraint profiles_bio_length check(char_length(bio) <= 280),
  created_at timestamptz not null default now()
 );
 alter table public.profiles enable row level security;

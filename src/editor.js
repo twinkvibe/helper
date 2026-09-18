@@ -19,7 +19,7 @@ function setPref(key, value) {
 
 export function attachEditor(host, { value = '', onChange = () => {}, onLink = () => {}, onError = () => {}, onImageRequest = null, id = 'source', imageStore = null } = {}) {
   let savedMode = getPref('helper:editor:view', 'editor');
-  let mode = savedMode === 'split' ? 'split' : 'editor';
+  let mode = ['split', 'preview'].includes(savedMode) ? savedMode : 'editor';
 
   let savedSplit = parseInt(getPref('helper:editor:split', '50'), 10);
   let splitRatio = (!isNaN(savedSplit) && savedSplit >= 30 && savedSplit <= 70) ? savedSplit : 50;
@@ -30,7 +30,7 @@ export function attachEditor(host, { value = '', onChange = () => {}, onLink = (
       <div class="format-bar__view"></div>
     </div>
     <div class="editor ${mode === 'split' ? 'split' : ''}">
-      <textarea id="${id}" aria-label="Markdown текст" spellcheck="false" placeholder="Начни писать…"></textarea>
+      <textarea id="${id}" aria-label="Markdown текст" spellcheck="false" placeholder="Начни писать…" ${mode === 'preview' ? 'hidden' : ''}></textarea>
       <article class="preview" aria-label="Предпросмотр" ${mode === 'editor' ? 'hidden' : ''}></article>
     </div>
     <div class="editor-footer">
@@ -49,6 +49,7 @@ export function attachEditor(host, { value = '', onChange = () => {}, onLink = (
 
   text.value = value;
   let lastValue = value;
+  let initializing = true;
   let undoStack = [];
   let redoStack = [];
   let renderVersion = 0;
@@ -92,7 +93,7 @@ export function attachEditor(host, { value = '', onChange = () => {}, onLink = (
     renderInto(preview, text.value);
     const trimmed = text.value.trim();
     wordCount.textContent = `${trimmed ? trimmed.split(/\s+/).length : 0} слов · ${text.value.length} символов`;
-    onChange(text.value);
+    if (!initializing) onChange(text.value);
   };
 
   function insert(before, after = '', placeholder = 'текст') {
@@ -298,7 +299,7 @@ export function attachEditor(host, { value = '', onChange = () => {}, onLink = (
   const modeSelect = document.createElement('select');
   modeSelect.className = 'mode-select';
   modeSelect.setAttribute('aria-label', 'Режим редактора');
-  modeSelect.innerHTML = '<option value="editor">Редактор</option><option value="split">Редактор + просмотр</option>';
+  modeSelect.innerHTML = '<option value="editor">Редактор</option><option value="split">Редактор + просмотр</option><option value="preview">Просмотр</option>';
   modeSelect.value = mode;
 
   const splitControl = document.createElement('label');
@@ -311,20 +312,35 @@ export function attachEditor(host, { value = '', onChange = () => {}, onLink = (
     if (mode === 'split') {
       editorBox.className = 'editor split';
       editorBox.style.gridTemplateColumns = `minmax(0, ${splitRatio}fr) minmax(0, ${100 - splitRatio}fr)`;
+      text.hidden = false;
       preview.hidden = false;
       splitControl.hidden = false;
       splitControl.style.display = '';
       splitRange.disabled = false;
       splitRange.tabIndex = 0;
+      formatGroup.hidden = false;
+      renderInto(preview, text.value);
+    } else if (mode === 'preview') {
+      editorBox.className = 'editor';
+      editorBox.style.gridTemplateColumns = '1fr';
+      text.hidden = true;
+      preview.hidden = false;
+      splitControl.hidden = true;
+      splitControl.style.display = 'none';
+      splitRange.disabled = true;
+      splitRange.tabIndex = -1;
+      formatGroup.hidden = true;
       renderInto(preview, text.value);
     } else {
       editorBox.className = 'editor';
       editorBox.style.gridTemplateColumns = '1fr';
+      text.hidden = false;
       preview.hidden = true;
       splitControl.hidden = true;
       splitControl.style.display = 'none';
       splitRange.disabled = true;
       splitRange.tabIndex = -1;
+      formatGroup.hidden = false;
     }
   }
 
@@ -332,7 +348,7 @@ export function attachEditor(host, { value = '', onChange = () => {}, onLink = (
     mode = modeSelect.value;
     setPref('helper:editor:view', mode);
     applyModeLayout();
-    text.focus();
+    if (mode !== 'preview') text.focus();
   };
 
   splitRange.oninput = e => {
@@ -387,6 +403,7 @@ export function attachEditor(host, { value = '', onChange = () => {}, onLink = (
   });
 
   emit();
+  initializing = false;
 
   return {
     text,

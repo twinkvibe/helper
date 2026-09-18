@@ -518,6 +518,10 @@
   gap: 4px;
 }
 
+.format-bar__format[hidden] {
+  display: none !important;
+}
+
 .format-bar__view {
   display: flex;
   align-items: center;

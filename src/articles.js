@@ -558,7 +558,16 @@ export function mountArticles(host, { client, userId, username, notice, requireS
       form.innerHTML = `
         <label>Заголовок<input name="title" maxlength="180" required></label>
         <div class="article-fields">
-          <label>Адрес статьи<input name="slug" maxlength="80" pattern="[a-z0-9а-яё-]+" required></label>
+          <div class="article-meta-col">
+            <label>Адрес статьи<input name="slug" maxlength="80" pattern="[a-z0-9а-яё-]+" required></label>
+            <label>Доступ
+              <select name="access">
+                <option value="private">Приватно</option>
+                <option value="unlisted">Только по ссылке</option>
+                <option value="public">Общедоступно</option>
+              </select>
+            </label>
+          </div>
           <div class="cover-picker-container">
             <span class="field-label" style="font-size: 13px; font-weight: 550; display: block; margin-bottom: 6px;">Обложка</span>
             <div class="cover-picker">
@@ -587,13 +596,6 @@ export function mountArticles(host, { client, userId, username, notice, requireS
             </div>
             <input type="hidden" name="cover" value="${escapeHtml(article.cover_url || '')}">
           </div>
-          <label>Доступ
-            <select name="access">
-              <option value="private">Приватно</option>
-              <option value="unlisted">Только по ссылке</option>
-              <option value="public">Общедоступно</option>
-            </select>
-          </label>
         </div>
         <div class="article-editor"></div>
         <div class="article-actions" style="display: flex; justify-content: space-between; align-items: center;">

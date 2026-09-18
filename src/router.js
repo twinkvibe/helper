@@ -56,6 +56,14 @@ export function pageHref(page) {
   return page === 'todos' ? './' : `./${PAGE_TO_ROUTE[page] || page}`;
 }
 
+/** Canonical absolute URL rooted at BASE_URL — use for location.replace() / redirects. */
+export function appPath(path) {
+  const base = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL
+    ? import.meta.env.BASE_URL
+    : '/helper/').replace(/\/+$/, '') + '/';
+  return path ? `${base}${path}` : base;
+}
+
 export function brandHtml(href) {
   const base = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL ? import.meta.env.BASE_URL : '/helper/').replace(/\/+$/, '') + '/';
   const target = href !== undefined && href !== null ? href : base;
