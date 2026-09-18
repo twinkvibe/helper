@@ -12,37 +12,106 @@ import { icon } from './icons.js';
  * @param {string} [options.title='Кадрирование изображения']
  * @returns {Promise<Blob | null>}
  */
-export function editImage(file, { aspectRatio = 1, outputWidth = 512, outputHeight = 512, title = 'Кадрирование изображения' } = {}) {
+/**
+ * Decodes a local image File or Blob safely.
+ *
+ * Validates the file instance, size, and MIME type.
+ * Note: Never set crossOrigin on blob: URLs, as it triggers unnecessary and failing
+ * CORS security checks in browser engines, which causes img.onerror.
+ *
+ * @param {Blob | File} file
+ * @returns {Promise<{ img: HTMLImageElement, cleanup: () => void }>}
+ */
+export function loadLocalImage(file) {
   return new Promise((resolve, reject) => {
-    if (typeof document === 'undefined') {
-      return resolve(null);
+    if (!file || !(file instanceof Blob)) {
+      return reject(new Error('Не удалось прочитать изображение: неверный формат файла.'));
+    }
+    if (file.type && !file.type.startsWith('image/')) {
+      return reject(new Error('Не удалось прочитать изображение: файл не является изображением.'));
+    }
+    if (file.size === 0) {
+      return reject(new Error('Не удалось прочитать изображение: файл пуст.'));
     }
 
-    const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
+    let objectUrl = null;
+    try {
+      objectUrl = URL.createObjectURL(file);
+    } catch {
+      return reject(new Error('Не удалось прочитать изображение: ошибка создания объекта URL.'));
+    }
 
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('Не удалось прочитать изображение'));
+    const img = new Image();
+    // CRITICAL: Do NOT set img.crossOrigin on blob: URLs!
+    // In browsers, crossOrigin='anonymous' on blob: URLs triggers CORS security violations
+    // and causes img.onerror with "Не удалось прочитать изображение".
+
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (!cleanedUp) {
+        cleanedUp = true;
+        if (objectUrl) {
+          URL.revokeObjectURL(objectUrl);
+          objectUrl = null;
+        }
+      }
     };
 
     img.onload = () => {
-      // If no explicit ratio, preserve the image's natural aspect ratio
-      const effectiveAspect = (aspectRatio !== null && aspectRatio !== undefined && aspectRatio > 0)
-        ? aspectRatio
-        : img.naturalWidth / img.naturalHeight || 1;
-      const effectiveOutputH = (aspectRatio !== null && aspectRatio !== undefined && aspectRatio > 0)
-        ? outputHeight
-        : Math.round(outputWidth / effectiveAspect);
-      const modal = document.createElement('div');
-      modal.className = 'image-editor-modal dialog-scrim';
-      modal.setAttribute('role', 'dialog');
-      modal.setAttribute('aria-modal', 'true');
-      modal.setAttribute('aria-label', title);
+      if (typeof img.decode === 'function') {
+        img.decode()
+          .then(() => resolve({ img, cleanup }))
+          .catch(() => resolve({ img, cleanup }));
+      } else {
+        resolve({ img, cleanup });
+      }
+    };
 
-      modal.innerHTML = `
-        <div class="image-editor-card dialog-box">
+    img.onerror = () => {
+      cleanup();
+      reject(new Error('Не удалось прочитать изображение'));
+    };
+
+    img.src = objectUrl;
+  });
+}
+
+/**
+ * Reusable Canvas-based image cropper and resizer.
+ * Supports arbitrary aspect ratios (e.g. 1:1 for avatars, 16:9 for covers).
+ *
+ * @param {File | Blob} file
+ * @param {Object} options
+ * @param {number} [options.aspectRatio=1]
+ * @param {number} [options.outputWidth=512]
+ * @param {number} [options.outputHeight=512]
+ * @param {string} [options.title='Кадрирование изображения']
+ * @returns {Promise<Blob | null>}
+ */
+export async function editImage(file, { aspectRatio = 1, outputWidth = 512, outputHeight = 512, title = 'Кадрирование изображения' } = {}) {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  const { img, cleanup: cleanupImage } = await loadLocalImage(file);
+
+  return new Promise((resolve, reject) => {
+    // If no explicit ratio, preserve the image's natural aspect ratio
+    const naturalRatio = (img.naturalWidth && img.naturalHeight) ? (img.naturalWidth / img.naturalHeight) : 1;
+    const effectiveAspect = (aspectRatio !== null && aspectRatio !== undefined && aspectRatio > 0)
+      ? aspectRatio
+      : naturalRatio;
+    const effectiveOutputH = (aspectRatio !== null && aspectRatio !== undefined && aspectRatio > 0)
+      ? outputHeight
+      : Math.round(outputWidth / effectiveAspect);
+    const modal = document.createElement('div');
+    modal.className = 'image-editor-modal dialog-scrim';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', title);
+
+    modal.innerHTML = `
+      <div class="image-editor-card dialog-box">
           <div class="image-editor-header">
             <h3>${title}</h3>
             <button type="button" class="quiet icon-button close-btn" aria-label="Закрыть">
@@ -182,7 +251,7 @@ export function editImage(file, { aspectRatio = 1, outputWidth = 512, outputHeig
       );
 
       function cleanup() {
-        URL.revokeObjectURL(objectUrl);
+        cleanupImage();
         modal.remove();
         document.removeEventListener('keydown', onKeyDown);
       }
@@ -238,8 +307,5 @@ export function editImage(file, { aspectRatio = 1, outputWidth = 512, outputHeig
           0.92
         );
       };
-    };
-
-    img.src = objectUrl;
   });
 }

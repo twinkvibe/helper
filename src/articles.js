@@ -382,6 +382,8 @@ function openArticleImageDialog({ uploadMedia, insert, notice }) {
     } catch (err) {
       uploadStatus.textContent = err.message || 'Ошибка загрузки';
       notice(err.message || 'Ошибка загрузки', true);
+    } finally {
+      fileInput.value = '';
     }
   };
 
@@ -459,7 +461,8 @@ export function mountArticles(host, { client, userId, username, notice, requireS
       render();
       return;
     }
-    if (!confirm(`Удалить «${article.title}»?\nЭто действие нельзя отменить.`)) return;
+    const titleText = article.title ? `«${article.title}»` : 'статью';
+    if (!confirm(`Удалить ${titleText}?\nЭто действие нельзя отменить.`)) return;
     await requireSession();
     const { error } = await client.from('articles').delete().eq('id', article.id);
     if (error) {

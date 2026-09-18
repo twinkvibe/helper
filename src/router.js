@@ -10,7 +10,7 @@ export const KNOWN_PRIVATE_PAGES = {
 };
 
 export const PAGE_TO_ROUTE = {
-  todos: 'tasks',
+  todos: '',
   markdown: 'notes',
   articles: 'editor',
   settings: 'account',
@@ -53,7 +53,12 @@ export function sanitizeNext(rawNext) {
 }
 
 export function pageHref(page) {
-  return page === 'todos' ? './' : `./${PAGE_TO_ROUTE[page] || page}`;
+  const base = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL
+    ? import.meta.env.BASE_URL
+    : '/helper/').replace(/\/+$/, '') + '/';
+  if (page === 'todos') return base;
+  const route = PAGE_TO_ROUTE[page] || page;
+  return `${base}${String(route).replace(/^\/+/, '')}`;
 }
 
 /** Canonical absolute URL rooted at BASE_URL — use for location.replace() / redirects. */
@@ -61,7 +66,7 @@ export function appPath(path) {
   const base = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL
     ? import.meta.env.BASE_URL
     : '/helper/').replace(/\/+$/, '') + '/';
-  return path ? `${base}${path}` : base;
+  return path ? `${base}${String(path).replace(/^\/+/, '')}` : base;
 }
 
 export function brandHtml(href) {

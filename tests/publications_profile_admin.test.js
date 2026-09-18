@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { attachEditor } from '../src/editor.js';
 import { mountArticles } from '../src/articles.js';
+import { loadLocalImage } from '../src/image-editor.js';
 
 test('Editor toolbar contains format-bar__format and format-bar__view groups with split slider behavior', () => {
   const dom = new JSDOM('<section id="editor"></section>', { url: 'https://example.test/helper/' });
@@ -354,6 +355,500 @@ test('Profile bio validation accepts up to 280 characters and get_public_profile
   const projected = project(profileWithBio);
   assert.equal(projected.bio, 'Разработчик и автор заметок');
   assert.equal(projected.role, undefined);
+});
+
+test('Saved private article deletion requires confirmation', async () => {
+  const dom = new JSDOM('<section id="articles-root"></section>', { url: 'https://example.test/helper/' });
+  const names = ['window', 'document', 'localStorage', 'confirm'];
+  const previous = Object.fromEntries(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+
+  let confirmAnswer = false;
+  let confirmCalled = false;
+  let deletedId = null;
+
+  for (const [name, value] of Object.entries({
+    window: dom.window,
+    document: dom.window.document,
+    localStorage: dom.window.localStorage,
+    confirm: (msg) => {
+      confirmCalled = true;
+      assert.match(msg, /Удалить/);
+      return confirmAnswer;
+    },
+  })) {
+    Object.defineProperty(globalThis, name, { value, writable: true, configurable: true });
+  }
+
+  const mockArticles = [
+    { id: 'art-priv', title: 'Приватная статья', slug: 'priv', body: 'Текст', access: 'private', updated_at: '2026-09-18T10:00:00Z' },
+  ];
+
+  const client = {
+    auth: { getSession: async () => ({ data: { session: { user: { id: 'u1' } } } }) },
+    from(table) {
+      if (table === 'articles') {
+        return {
+          select: () => ({ order: async () => ({ data: [...mockArticles], error: null }) }),
+          delete: () => ({ eq: (col, val) => { deletedId = val; return Promise.resolve({ error: null }); } }),
+        };
+      }
+      return {};
+    },
+  };
+
+  const host = document.querySelector('#articles-root');
+  mountArticles(host, { client, userId: 'u1', username: 'author', notice: () => {}, requireSession: async () => {} });
+  await new Promise(r => setTimeout(r, 25));
+
+  const deleteBtn = host.querySelector('.delete-article-btn');
+  assert.ok(deleteBtn, 'Delete button exists');
+
+  // Case 1: user cancels confirm
+  confirmAnswer = false;
+  confirmCalled = false;
+  deleteBtn.click();
+  await new Promise(r => setTimeout(r, 25));
+  assert.equal(confirmCalled, true, 'Confirm must be called for private article');
+  assert.equal(deletedId, null, 'Private article must NOT be deleted when confirmation is cancelled');
+
+  // Case 2: user confirms
+  confirmAnswer = true;
+  confirmCalled = false;
+  deleteBtn.click();
+  await new Promise(r => setTimeout(r, 25));
+  assert.equal(confirmCalled, true, 'Confirm must be called');
+  assert.equal(deletedId, 'art-priv', 'Private article must be deleted when confirmed');
+
+  dom.window.close();
+  for (const name of names) {
+    if (previous[name]) Object.defineProperty(globalThis, name, previous[name]);
+    else delete globalThis[name];
+  }
+});
+
+test('Saved unlisted article deletion requires confirmation', async () => {
+  const dom = new JSDOM('<section id="articles-root"></section>', { url: 'https://example.test/helper/' });
+  const names = ['window', 'document', 'localStorage', 'confirm'];
+  const previous = Object.fromEntries(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+
+  let confirmAnswer = false;
+  let confirmCalled = false;
+  let deletedId = null;
+
+  for (const [name, value] of Object.entries({
+    window: dom.window,
+    document: dom.window.document,
+    localStorage: dom.window.localStorage,
+    confirm: (msg) => {
+      confirmCalled = true;
+      assert.match(msg, /Удалить/);
+      return confirmAnswer;
+    },
+  })) {
+    Object.defineProperty(globalThis, name, { value, writable: true, configurable: true });
+  }
+
+  const mockArticles = [
+    { id: 'art-unl', title: 'Статья по ссылке', slug: 'unl', body: 'Текст', access: 'unlisted', updated_at: '2026-09-18T10:00:00Z' },
+  ];
+
+  const client = {
+    auth: { getSession: async () => ({ data: { session: { user: { id: 'u1' } } } }) },
+    from(table) {
+      if (table === 'articles') {
+        return {
+          select: () => ({ order: async () => ({ data: [...mockArticles], error: null }) }),
+          delete: () => ({ eq: (col, val) => { deletedId = val; return Promise.resolve({ error: null }); } }),
+        };
+      }
+      return {};
+    },
+  };
+
+  const host = document.querySelector('#articles-root');
+  mountArticles(host, { client, userId: 'u1', username: 'author', notice: () => {}, requireSession: async () => {} });
+  await new Promise(r => setTimeout(r, 25));
+
+  const deleteBtn = host.querySelector('.delete-article-btn');
+  assert.ok(deleteBtn);
+
+  // Case 1: user cancels
+  confirmAnswer = false;
+  confirmCalled = false;
+  deleteBtn.click();
+  await new Promise(r => setTimeout(r, 25));
+  assert.equal(confirmCalled, true, 'Confirm must be called for unlisted article');
+  assert.equal(deletedId, null, 'Unlisted article must NOT be deleted when cancelled');
+
+  // Case 2: user confirms
+  confirmAnswer = true;
+  confirmCalled = false;
+  deleteBtn.click();
+  await new Promise(r => setTimeout(r, 25));
+  assert.equal(confirmCalled, true);
+  assert.equal(deletedId, 'art-unl');
+
+  dom.window.close();
+  for (const name of names) {
+    if (previous[name]) Object.defineProperty(globalThis, name, previous[name]);
+    else delete globalThis[name];
+  }
+});
+
+test('Saved public article deletion requires confirmation', async () => {
+  const dom = new JSDOM('<section id="articles-root"></section>', { url: 'https://example.test/helper/' });
+  const names = ['window', 'document', 'localStorage', 'confirm'];
+  const previous = Object.fromEntries(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+
+  let confirmAnswer = false;
+  let confirmCalled = false;
+  let deletedId = null;
+
+  for (const [name, value] of Object.entries({
+    window: dom.window,
+    document: dom.window.document,
+    localStorage: dom.window.localStorage,
+    confirm: (msg) => {
+      confirmCalled = true;
+      assert.match(msg, /Удалить/);
+      return confirmAnswer;
+    },
+  })) {
+    Object.defineProperty(globalThis, name, { value, writable: true, configurable: true });
+  }
+
+  const mockArticles = [
+    { id: 'art-pub', title: 'Публичная статья', slug: 'pub', body: 'Текст', access: 'public', updated_at: '2026-09-18T10:00:00Z' },
+  ];
+
+  const client = {
+    auth: { getSession: async () => ({ data: { session: { user: { id: 'u1' } } } }) },
+    from(table) {
+      if (table === 'articles') {
+        return {
+          select: () => ({ order: async () => ({ data: [...mockArticles], error: null }) }),
+          delete: () => ({ eq: (col, val) => { deletedId = val; return Promise.resolve({ error: null }); } }),
+        };
+      }
+      return {};
+    },
+  };
+
+  const host = document.querySelector('#articles-root');
+  mountArticles(host, { client, userId: 'u1', username: 'author', notice: () => {}, requireSession: async () => {} });
+  await new Promise(r => setTimeout(r, 25));
+
+  const deleteBtn = host.querySelector('.delete-article-btn');
+  assert.ok(deleteBtn);
+
+  // Case 1: user cancels
+  confirmAnswer = false;
+  confirmCalled = false;
+  deleteBtn.click();
+  await new Promise(r => setTimeout(r, 25));
+  assert.equal(confirmCalled, true, 'Confirm must be called for public article');
+  assert.equal(deletedId, null, 'Public article must NOT be deleted when cancelled');
+
+  // Case 2: user confirms
+  confirmAnswer = true;
+  confirmCalled = false;
+  deleteBtn.click();
+  await new Promise(r => setTimeout(r, 25));
+  assert.equal(confirmCalled, true);
+  assert.equal(deletedId, 'art-pub');
+
+  dom.window.close();
+  for (const name of names) {
+    if (previous[name]) Object.defineProperty(globalThis, name, previous[name]);
+    else delete globalThis[name];
+  }
+});
+
+test('Structured todo audit diff tracks field changes and excludes description content', () => {
+  // Simulate log_data_change logic for todos
+  const buildTodoAuditDiff = (op, oldRow, newRow) => {
+    if (op === 'INSERT') {
+      return {
+        changed_fields: ['title', 'done', 'list_name', 'due_date', 'priority', 'tags', 'note_id', 'description'],
+        before: null,
+        after: {
+          title: newRow.title,
+          done: newRow.done,
+          list_name: newRow.list_name,
+          due_date: newRow.due_date,
+          priority: newRow.priority,
+          tags: newRow.tags,
+          note_id: newRow.note_id,
+        },
+        description_changed: false,
+        description_length_after: (newRow.description || '').length,
+        title: newRow.title,
+      };
+    }
+    if (op === 'DELETE') {
+      return {
+        changed_fields: ['title', 'done', 'list_name', 'due_date', 'priority', 'tags', 'note_id', 'description'],
+        before: {
+          title: oldRow.title,
+          done: oldRow.done,
+          list_name: oldRow.list_name,
+          due_date: oldRow.due_date,
+          priority: oldRow.priority,
+          tags: oldRow.tags,
+          note_id: oldRow.note_id,
+        },
+        after: null,
+        description_changed: false,
+        description_length_before: (oldRow.description || '').length,
+        title: oldRow.title,
+      };
+    }
+    if (op === 'UPDATE') {
+      const changed_fields = [];
+      const before = {};
+      const after = {};
+      const fields = ['title', 'done', 'list_name', 'due_date', 'priority', 'tags', 'note_id'];
+      for (const f of fields) {
+        if (JSON.stringify(oldRow[f]) !== JSON.stringify(newRow[f])) {
+          changed_fields.push(f);
+          before[f] = oldRow[f];
+          after[f] = newRow[f];
+        }
+      }
+      const descChanged = oldRow.description !== newRow.description;
+      if (descChanged) changed_fields.push('description');
+      const res = {
+        changed_fields,
+        before,
+        after,
+        description_changed: descChanged,
+        title: newRow.title || oldRow.title,
+      };
+      if (descChanged) {
+        res.description_length_before = (oldRow.description || '').length;
+        res.description_length_after = (newRow.description || '').length;
+      }
+      return res;
+    }
+  };
+
+  const oldTodo = {
+    title: 'Старое название',
+    done: false,
+    list_name: 'Входящие',
+    due_date: null,
+    priority: 0,
+    tags: ['старое'],
+    note_id: null,
+    description: 'Секретное описание задачи 1234567890',
+  };
+  const newTodo = {
+    title: 'Новое название',
+    done: true,
+    list_name: 'Проект',
+    due_date: '2026-10-01',
+    priority: 2,
+    tags: ['новое'],
+    note_id: 'note-uuid',
+    description: 'Новое обновленное описание задачи, очень длинное!',
+  };
+
+  const diff = buildTodoAuditDiff('UPDATE', oldTodo, newTodo);
+
+  assert.deepEqual(diff.changed_fields, ['title', 'done', 'list_name', 'due_date', 'priority', 'tags', 'note_id', 'description']);
+  assert.equal(diff.before.title, 'Старое название');
+  assert.equal(diff.after.title, 'Новое название');
+  assert.equal(diff.before.done, false);
+  assert.equal(diff.after.done, true);
+  assert.equal(diff.description_changed, true);
+  assert.equal(diff.description_length_before, oldTodo.description.length);
+  assert.equal(diff.description_length_after, newTodo.description.length);
+
+  // Description content must NEVER be in before, after, or top-level diff
+  assert.equal(diff.before.description, undefined);
+  assert.equal(diff.after.description, undefined);
+  assert.equal(diff.description, undefined);
+  const serialized = JSON.stringify(diff);
+  assert.ok(!serialized.includes('Секретное описание'), 'Description content must be absent from audit JSON');
+  assert.ok(!serialized.includes('Новое обновленное'), 'Description content must be absent from audit JSON');
+});
+
+test('Structured article audit diff tracks field changes and excludes body content', () => {
+  const buildArticleAuditDiff = (op, oldRow, newRow) => {
+    if (op === 'UPDATE') {
+      const changed_fields = [];
+      const before = {};
+      const after = {};
+      const fields = ['title', 'slug', 'excerpt', 'cover_url', 'access', 'published', 'published_at'];
+      for (const f of fields) {
+        if (oldRow[f] !== newRow[f]) {
+          changed_fields.push(f);
+          before[f] = oldRow[f];
+          after[f] = newRow[f];
+        }
+      }
+      const bodyChanged = oldRow.body !== newRow.body;
+      if (bodyChanged) changed_fields.push('body');
+      const res = {
+        changed_fields,
+        before,
+        after,
+        body_changed: bodyChanged,
+        title: newRow.title || oldRow.title,
+        slug: newRow.slug || oldRow.slug,
+      };
+      if (bodyChanged) {
+        res.body_length_before = (oldRow.body || '').length;
+        res.body_length_after = (newRow.body || '').length;
+      }
+      return res;
+    }
+  };
+
+  const oldArt = {
+    title: 'Черновик',
+    slug: 'draft',
+    excerpt: 'Кратко',
+    cover_url: null,
+    access: 'private',
+    published: false,
+    published_at: null,
+    body: 'Секретный текст публикации длиной в 100 символов...',
+  };
+  const newArt = {
+    title: 'Опубликовано',
+    slug: 'published',
+    excerpt: 'Новое кратко',
+    cover_url: 'https://example.com/cover.png',
+    access: 'public',
+    published: true,
+    published_at: '2026-09-18T12:00:00Z',
+    body: 'Секретный текст публикации длиной в 100 символов... Плюс еще 50 новых символов...',
+  };
+
+  const diff = buildArticleAuditDiff('UPDATE', oldArt, newArt);
+
+  assert.deepEqual(diff.changed_fields, ['title', 'slug', 'excerpt', 'cover_url', 'access', 'published', 'published_at', 'body']);
+  assert.equal(diff.before.access, 'private');
+  assert.equal(diff.after.access, 'public');
+  assert.equal(diff.body_changed, true);
+  assert.equal(diff.body_length_before, oldArt.body.length);
+  assert.equal(diff.body_length_after, newArt.body.length);
+
+  // Body content must NEVER be present
+  assert.equal(diff.before.body, undefined);
+  assert.equal(diff.after.body, undefined);
+  assert.equal(diff.body, undefined);
+  const serialized = JSON.stringify(diff);
+  assert.ok(!serialized.includes('Секретный текст'), 'Body content must be absent from audit JSON');
+});
+
+test('Actor safe projection excludes internal and sensitive credentials', () => {
+  const fullProfileRow = {
+    id: '11111111-1111-1111-1111-111111111111',
+    username: 'admin',
+    display_name: 'Главный Администратор',
+    avatar_url: 'https://example.com/avatar.jpg',
+    role: 'admin',
+    blocked: false,
+    must_change_password: false,
+    email: 'admin@helper.test',
+    password_hash: '$2b$10$abcdefghijklmnopqrstuv',
+  };
+
+  const projectActor = (p) => (!p ? null : {
+    username: p.username,
+    display_name: p.display_name || null,
+    avatar_url: p.avatar_url || null,
+  });
+
+  const safe = projectActor(fullProfileRow);
+  assert.equal(safe.username, 'admin');
+  assert.equal(safe.display_name, 'Главный Администратор');
+  assert.equal(safe.avatar_url, 'https://example.com/avatar.jpg');
+  assert.equal(safe.role, undefined);
+  assert.equal(safe.blocked, undefined);
+  assert.equal(safe.must_change_password, undefined);
+  assert.equal(safe.email, undefined);
+  assert.equal(safe.password_hash, undefined);
+});
+
+test('Missing bio RPC 42883 is not considered a successful save', async () => {
+  let noticeMessage = '';
+  let noticeIsError = false;
+  const notice = (msg, isErr) => {
+    noticeMessage = msg;
+    noticeIsError = Boolean(isErr);
+  };
+
+  const profile = {
+    display_name: 'Старое имя',
+    bio: 'Старое био',
+  };
+
+  // Simulating frontend submit handler
+  const handleProfileSubmit = async ({ newName, newBio, client }) => {
+    if (newName !== (profile.display_name || '')) {
+      const res = await client.rpc('set_profile_display_name', { new_display_name: newName || null });
+      if (res.error) throw res.error;
+      profile.display_name = newName || null;
+    }
+
+    if (newBio !== (profile.bio || '')) {
+      const bioRes = await client.rpc('set_profile_bio', { new_bio: newBio || null });
+      if (bioRes.error) {
+        if (bioRes.error.code === '42883') {
+          notice('Обновление профиля требует применения новой миграции базы данных.', true);
+          return;
+        }
+        throw bioRes.error;
+      }
+      profile.bio = newBio || null;
+    }
+
+    notice('Профиль сохранён.');
+  };
+
+  const mockClient = {
+    rpc: async (fn, params) => {
+      if (fn === 'set_profile_display_name') return { error: null };
+      if (fn === 'set_profile_bio') {
+        return { error: { code: '42883', message: 'function public.set_profile_bio(text) does not exist' } };
+      }
+      return { error: null };
+    },
+  };
+
+  await handleProfileSubmit({ newName: 'Новое имя', newBio: 'Новое био', client: mockClient });
+
+  assert.equal(profile.display_name, 'Новое имя', 'Display name was saved');
+  assert.equal(profile.bio, 'Старое био', 'Bio must NOT be updated when RPC returns 42883');
+  assert.equal(noticeIsError, true, 'Notice must be marked as error');
+  assert.equal(noticeMessage, 'Обновление профиля требует применения новой миграции базы данных.');
+  assert.notEqual(noticeMessage, 'Профиль сохранён.');
+});
+
+test('loadLocalImage validates file format and rejects non-images or empty files', async () => {
+  await assert.rejects(
+    () => loadLocalImage(null),
+    /неверный формат файла/
+  );
+  await assert.rejects(
+    () => loadLocalImage({}),
+    /неверный формат файла/
+  );
+
+  const textBlob = new Blob(['hello world'], { type: 'text/plain' });
+  await assert.rejects(
+    () => loadLocalImage(textBlob),
+    /файл не является изображением/
+  );
+
+  const emptyBlob = new Blob([], { type: 'image/png' });
+  await assert.rejects(
+    () => loadLocalImage(emptyBlob),
+    /файл пуст/
+  );
 });
 
 

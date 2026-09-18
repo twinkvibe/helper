@@ -143,7 +143,12 @@ Deno.serve(async (req) => {
         await admin.auth.admin.deleteUser(data.user.id);
         throw saved.error;
       }
-      await logAudit('user_create', 'profiles', data.user.id, { username: body.username });
+      await logAudit('user_create', 'profiles', data.user.id, {
+        username: body.username,
+        changed_fields: ['user'],
+        before: null,
+        after: { username: body.username, role },
+      });
       return reply(200, { ok: true });
     }
 
@@ -182,7 +187,7 @@ Deno.serve(async (req) => {
 
       const { data: current, error: curError } = await admin
         .from('articles')
-        .select('id,title,slug,published_at')
+        .select('id,title,slug,access,published_at')
         .eq('id', body.id)
         .maybeSingle();
       if (curError) throw curError;
@@ -206,9 +211,11 @@ Deno.serve(async (req) => {
       if (!updated) return reply(404, { error: 'Статья не найдена' });
 
       await logAudit('admin_article_access', 'articles', updated.id, {
-        access,
         title: updated.title,
         slug: updated.slug,
+        changed_fields: ['access'],
+        before: { access: current.access },
+        after: { access },
       });
       return reply(200, { ok: true });
     }
@@ -218,7 +225,7 @@ Deno.serve(async (req) => {
       if (typeof body.id !== 'string') return reply(400, { error: 'Укажите ID статьи' });
       const { data: art, error: findError } = await admin
         .from('articles')
-        .select('id,title,slug')
+        .select('id,title,slug,access')
         .eq('id', body.id)
         .maybeSingle();
       if (findError) throw findError;
@@ -227,7 +234,13 @@ Deno.serve(async (req) => {
       const { error } = await admin.from('articles').delete().eq('id', body.id);
       if (error) throw error;
 
-      await logAudit('admin_article_delete', 'articles', body.id, { title: art.title, slug: art.slug });
+      await logAudit('admin_article_delete', 'articles', body.id, {
+        title: art.title,
+        slug: art.slug,
+        changed_fields: ['article'],
+        before: { title: art.title, slug: art.slug, access: art.access },
+        after: null,
+      });
       return reply(200, { ok: true });
     }
 
@@ -237,7 +250,7 @@ Deno.serve(async (req) => {
 
     const { data: target, error: targetError } = await admin
       .from('profiles')
-      .select('id,username,role,blocked')
+      .select('id,username,role,blocked,must_change_password')
       .eq('id', body.id)
       .single();
     if (targetError || !target) return reply(404, { error: 'Пользователь не найден' });
@@ -267,7 +280,12 @@ Deno.serve(async (req) => {
       }
       const { error } = await admin.from('profiles').update({ role: body.role }).eq('id', target.id);
       if (error) throw error;
-      await logAudit('role_change', 'profiles', target.id, { from: target.role, to: body.role, username: target.username });
+      await logAudit('role_change', 'profiles', target.id, {
+        username: target.username,
+        changed_fields: ['role'],
+        before: { role: target.role },
+        after: { role: body.role },
+      });
       return reply(200, { ok: true });
     }
 
@@ -279,7 +297,12 @@ Deno.serve(async (req) => {
       }
       const { error } = await admin.from('profiles').update({ blocked: body.blocked }).eq('id', target.id);
       if (error) throw error;
-      await logAudit(body.blocked ? 'block' : 'unblock', 'profiles', target.id, { username: target.username });
+      await logAudit(body.blocked ? 'block' : 'unblock', 'profiles', target.id, {
+        username: target.username,
+        changed_fields: ['blocked'],
+        before: { blocked: target.blocked },
+        after: { blocked: body.blocked },
+      });
       return reply(200, { ok: true });
     }
 
@@ -299,7 +322,12 @@ Deno.serve(async (req) => {
         });
       }
 
-      await logAudit('password_reset', 'profiles', target.id, { username: target.username });
+      await logAudit('password_reset', 'profiles', target.id, {
+        username: target.username,
+        changed_fields: ['must_change_password'],
+        before: { must_change_password: target.must_change_password },
+        after: { must_change_password: true },
+      });
       return reply(200, { ok: true });
     }
 
@@ -359,7 +387,12 @@ Deno.serve(async (req) => {
         return reply(500, { error: 'Не удалось удалить аккаунт из системы авторизации' });
       }
 
-      await logAudit('account_delete', 'users', target.id, { username: target.username });
+      await logAudit('account_delete', 'users', target.id, {
+        username: target.username,
+        changed_fields: ['user'],
+        before: { username: target.username, role: target.role },
+        after: null,
+      });
       return reply(200, { ok: true });
     }
 

@@ -55,14 +55,23 @@ test('sanitizeNext accepts only known private routes and rejects unsafe or unkno
   assert.equal(sanitizeNext(null), null);
 });
 
-test('pageHref produces relative paths within /helper/', () => {
-  assert.equal(pageHref('todos'), './');
-  assert.equal(pageHref('markdown'), './notes');
-  assert.equal(pageHref('articles'), './editor');
-  assert.equal(pageHref('settings'), './account');
-  assert.equal(pageHref('admin'), './admin');
-  assert.equal(pageHref('adminArticles'), './admin/articles');
-  assert.equal(pageHref('logs'), './logs');
+test('pageHref produces canonical paths rooted at BASE_URL', () => {
+  assert.equal(pageHref('todos'), '/helper/');
+  assert.equal(pageHref('markdown'), '/helper/notes');
+  assert.equal(pageHref('articles'), '/helper/editor');
+  assert.equal(pageHref('settings'), '/helper/account');
+  assert.equal(pageHref('admin'), '/helper/admin');
+  assert.equal(pageHref('adminArticles'), '/helper/admin/articles');
+  assert.equal(pageHref('logs'), '/helper/logs');
+});
+
+test('Nested route navigation does not resolve to /admin/logs', () => {
+  // Simulating browser resolving link href on a nested page /helper/admin/articles
+  const currentUrl = new URL('https://example.test/helper/admin/articles');
+  const targetHref = pageHref('logs');
+  const resolvedUrl = new URL(targetHref, currentUrl);
+  assert.equal(resolvedUrl.pathname, '/helper/logs');
+  assert.notEqual(resolvedUrl.pathname, '/helper/admin/logs');
 });
 
 test('brandHtml renders unified brand mark with favicon.svg', () => {
