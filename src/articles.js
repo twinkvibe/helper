@@ -24,6 +24,7 @@ export async function renderPublicArticle(host, client, slug) {
  host.querySelector('h1').textContent = data.title;
  host.querySelector('.article-byline').textContent = `${data.author_name || 'Автор'} · ${date(data.published_at)}`;
  host.querySelector('.article-body').innerHTML = renderMarkdown(data.body);
+ host.querySelectorAll('.article-body pre > code[class*="language-"]').forEach(code=>{const language=code.className.match(/(?:^|\s)language-([\w+-]+)/)?.[1];if(!language)return;const label=document.createElement('span');label.className='code-language';label.textContent=language;code.parentElement.prepend(label);});
  host.querySelectorAll('.article-body input[type="checkbox"]').forEach(input=>{input.disabled=true;input.setAttribute('aria-disabled','true');});
  document.title = `${data.title} — helper`;
  [['og:title',data.title],['og:description',data.excerpt||excerpt(data.body)],['og:url',location.href],['twitter:title',data.title],['twitter:description',data.excerpt||excerpt(data.body)]].forEach(([property,content])=>{let meta=document.querySelector(`meta[property="${property}"],meta[name="${property}"]`);if(!meta){meta=document.createElement('meta');meta.setAttribute(property.startsWith('twitter:')?'name':'property',property);document.head.append(meta);}meta.content=content;});
