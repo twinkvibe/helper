@@ -19,7 +19,7 @@ export async function renderPublicArticle(host, client, slug) {
   host.innerHTML = '<main class="public-article missing"><a class="brand" href="./">h<span>elper</span><i>✳</i></a><h1>Публикация не найдена</h1><p class="muted">Возможно, ссылка устарела или статья стала черновиком.</p><a class="primary public-login" href="./">Войти в Helper</a></main>';
   return;
  }
- host.innerHTML = '<main class="public-article"><header class="public-header"><a class="brand" href="./">h<span>elper</span><i>✳</i></a><a class="quiet" href="./">Войти</a></header><div class="article-cover article-cover-empty"></div><article class="article-paper"><p class="eyebrow"></p><h1></h1><div class="article-byline"></div><div class="article-body"></div></article></main>';
+ host.innerHTML = '<main class="public-article"><header class="public-header"><a class="brand" href="./">h<span>elper</span><i>✳</i></a><a class="quiet" href="./">Войти</a></header><div class="article-cover article-cover-empty"></div><article class="article-paper"><header class="article-title"><p class="eyebrow"></p><h1></h1><div class="article-byline"></div></header><div class="article-body"></div></article></main>';
  if (data.cover_url && /^https:\/\//i.test(data.cover_url)) { const image = document.createElement('img'); image.className='article-cover'; image.src=data.cover_url; image.alt=''; image.referrerPolicy='no-referrer'; host.querySelector('.article-cover').replaceWith(image); }
  host.querySelector('.eyebrow').textContent = `ПУБЛИКАЦИЯ · ${date(data.published_at)}`;
  host.querySelector('h1').textContent = data.title;
