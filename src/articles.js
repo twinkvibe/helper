@@ -22,7 +22,7 @@ export async function renderPublicArticle(host, client, slug) {
  host.innerHTML = '<main class="public-article"><header class="public-header"><a class="brand" href="./">h<span>elper</span><i>✳</i></a><a class="quiet" href="./">Войти</a></header><div class="article-cover article-cover-empty"></div><article class="article-paper"><header class="article-title"><h1></h1><div class="article-byline"></div></header><div class="article-body"></div></article></main>';
  if (data.cover_url && /^https:\/\//i.test(data.cover_url)) { const image = document.createElement('img'); image.className='article-cover'; image.src=data.cover_url; image.alt=''; image.referrerPolicy='no-referrer'; host.querySelector('.article-cover').replaceWith(image); }
  host.querySelector('h1').textContent = data.title;
- host.querySelector('.article-byline').textContent = `${data.author_name || 'Автор'} · ${date(data.published_at)}`;
+ host.querySelector('.article-byline').textContent = `@${data.author_name || 'автор'} · ${date(data.published_at)}`;
  host.querySelector('.article-body').innerHTML = renderMarkdown(data.body);
  host.querySelectorAll('.article-body pre > code[class*="language-"]').forEach(code=>{const language=code.className.match(/(?:^|\s)language-([\w+-]+)/)?.[1];if(!language)return;const label=document.createElement('span');label.className='code-language';label.textContent=language;code.parentElement.prepend(label);});
  host.querySelectorAll('.article-body input[type="checkbox"]').forEach(input=>{input.disabled=true;input.setAttribute('aria-disabled','true');});
