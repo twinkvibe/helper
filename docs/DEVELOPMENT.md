@@ -12,7 +12,7 @@ npm run dev
 
 Fill `.env.local` with a Supabase Project URL and publishable key. Never use a secret or service-role key in a `VITE_` variable.
 
-The app is served under `/helper/`. For a production-like check:
+The app is served under `/` (custom domain `helper.slutvibe.site`). For a production-like check:
 
 ```sh
 npm test

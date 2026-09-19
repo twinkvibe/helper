@@ -31,7 +31,7 @@ test('Multiple named notes persist and legacy Markdown is migrated without delet
 });
 
 test('Editor uses a single textarea source and completely removes live/block editor', () => {
-  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/'});
   const names=['window','document','localStorage'];
   const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
   for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
@@ -44,7 +44,7 @@ test('Editor uses a single textarea source and completely removes live/block edi
 });
 
 test('Editor resolves local attachment references without exposing data URLs', () => {
-  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/'});
   const names=['window','document','localStorage'];
   const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
   for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
@@ -56,7 +56,7 @@ test('Editor resolves local attachment references without exposing data URLs', (
 });
 
 test('Switching editor -> split -> editor preserves exact Markdown source', () => {
-  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/'});
   const names=['window','document','localStorage'];
   const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
   for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
@@ -89,7 +89,7 @@ test('Switching editor -> split -> editor preserves exact Markdown source', () =
 });
 
 test('Split slider affects only split mode and editor preferences are restored from localStorage', () => {
-  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/'});
   const names=['window','document','localStorage'];
   const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
   for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
@@ -117,7 +117,7 @@ test('Split slider affects only split mode and editor preferences are restored f
 });
 
 test('Enter/list behavior continues list item and does not lose text', () => {
-  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/'});
   const names=['window','document','localStorage'];
   const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
   for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
@@ -139,7 +139,7 @@ test('Enter/list behavior continues list item and does not lose text', () => {
 });
 
 test('Preview checklist renders, toggles state, and supports undo/redo', () => {
-  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/'});
   const names=['window','document','localStorage'];
   const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
   for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
@@ -163,7 +163,7 @@ test('Preview checklist renders, toggles state, and supports undo/redo', () => {
 });
 
 test('Workbench checks the session before loading and separates task states', async () => {
-  const dom=new JSDOM('<section id="view"></section>',{url:'https://example.test/helper/'});
+  const dom=new JSDOM('<section id="view"></section>',{url:'https://example.test/'});
   const names=['window','document','localStorage','location'];
   const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
   for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage,location:dom.window.location}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
@@ -182,7 +182,7 @@ test('Workbench checks the session before loading and separates task states', as
 });
 
 test('Editor initial mount does not fire onChange — no false dirty-state', () => {
-  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/'});
   const names=['window','document','localStorage'];
   const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
   for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
@@ -202,7 +202,7 @@ test('Editor initial mount does not fire onChange — no false dirty-state', () 
 });
 
 test('Preview mode hides textarea and shows rendered Markdown; editor mode restores textarea', () => {
-  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/helper/'});
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/'});
   const names=['window','document','localStorage'];
   const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
   for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});

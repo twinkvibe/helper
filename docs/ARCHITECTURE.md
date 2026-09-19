@@ -33,7 +33,7 @@ The UI converts a normalized username into `<username>@users.helper.invalid` and
 `todos` stores task title, completion, Markdown description, list, due date, priority, tags, and an optional browser-note UUID. RLS checks task ownership and the current profile on every operation.
 
 `articles` stores authored publication drafts and published articles. Access control follows three tiers:
-- `public`: accessible via direct SELECT to anyone when author is unblocked; displayed in public author profile at `/helper/u/:username`;
+- `public`: accessible via direct SELECT to anyone when author is unblocked; displayed in public author profile at `/u/:username`;
 - `unlisted`: not enumerable via direct SELECT (protected by RLS); accessible only via the SECURITY DEFINER RPC `get_article_by_slug(slug)`;
 - `private`: accessible only by the author.
 

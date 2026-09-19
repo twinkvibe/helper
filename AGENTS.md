@@ -4,7 +4,7 @@ This file is the canonical instruction set for coding agents working in this rep
 
 ## Product
 
-Helper is a private personal workspace delivered as a public static GitHub Pages application at `/helper/`. It provides authenticated tasks, browser-local Markdown notes, and an administrator UI. The interface language is Russian.
+Helper is a private personal workspace delivered as a public static GitHub Pages application at `/` on custom domain `helper.slutvibe.site`. It provides authenticated tasks, browser-local Markdown notes, and an administrator UI. The interface language is Russian.
 
 The product should feel like a compact tool. Prefer direct labels such as «Задачи», «Заметки», and «Аккаунт». Avoid filling routine screens with slogans, oversized decorative headings, or repeated labels such as «личное» and «чистый лист».
 
@@ -84,7 +84,7 @@ Never execute destructive SQL or deploy an Edge Function against the user's Supa
 ## Change discipline
 
 - Inspect `git status` before editing and preserve unrelated user changes.
-- Keep the Vite base path `/helper/` unless the deployment target changes.
+- Keep the Vite base path `/` unless the deployment target changes.
 - Maintain usable desktop and mobile layouts.
 - Prefer native browser APIs and small focused modules over adding dependencies.
 - Do not weaken validation merely to make an error disappear. Surface actionable Russian error messages.

@@ -46,7 +46,7 @@ export function publicArticleSlug(hash = location.hash) {
 }
 
 export async function renderPublicArticle(host, client, slug) {
-  const base = (import.meta.env?.BASE_URL || '/helper/').replace(/\/+$/, '') + '/';
+  const base = (import.meta.env?.BASE_URL || '/').replace(/\/+$/, '') + '/';
   host.innerHTML = `<main class="public-article loading">${brandHtml(base)}<p>Открываем публикацию…</p></main>`;
 
   let data = null;
@@ -177,7 +177,7 @@ export async function renderPublicArticle(host, client, slug) {
 }
 
 export async function renderPublicProfile(host, client, username) {
-  const base = (import.meta.env?.BASE_URL || '/helper/').replace(/\/+$/, '') + '/';
+  const base = (import.meta.env?.BASE_URL || '/').replace(/\/+$/, '') + '/';
   host.innerHTML = `<main class="public-profile-page loading">${brandHtml(base)}<p>Загрузка профиля…</p></main>`;
 
   let profile = null;
@@ -735,7 +735,7 @@ export function mountArticles(host, { client, userId, username, notice, requireS
 
       // Copy link
       form.querySelector('[data-copy]').onclick = () => {
-        const base = (import.meta.env?.BASE_URL || '/helper/').replace(/\/+$/, '') + '/';
+        const base = (import.meta.env?.BASE_URL || '/').replace(/\/+$/, '') + '/';
         const fullUrl = new URL(`${base}${articleHash(form.elements.slug.value.trim())}`, location.href).href;
         copy(fullUrl);
       };

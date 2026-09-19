@@ -634,7 +634,7 @@ function settings() {
   const previewAvatar = profile.avatar_url && /^https:\/\//i.test(profile.avatar_url)
     ? `<img class="author-avatar-xl" src="${escape(profile.avatar_url)}" alt="" referrerpolicy="no-referrer" style="width:64px;height:64px;border-radius:50%;object-fit:cover;">`
     : `<div class="admin-avatar-box" style="width:64px;height:64px;font-size:26px;border-radius:50%;">${escape((displayName || profile.username || 'U')[0].toUpperCase())}</div>`;
-  const base = (import.meta.env?.BASE_URL || '/helper/').replace(/\/+$/, '') + '/';
+  const base = (import.meta.env?.BASE_URL || '/').replace(/\/+$/, '') + '/';
 
   $('view').innerHTML = `
     <div class="title">
@@ -1036,7 +1036,7 @@ async function adminArticles() {
       return;
     }
 
-    const base = (import.meta.env?.BASE_URL || '/helper/').replace(/\/+$/, '') + '/';
+    const base = (import.meta.env?.BASE_URL || '/').replace(/\/+$/, '') + '/';
 
     filtered.forEach(art => {
       const card = document.createElement('div');
@@ -1189,7 +1189,7 @@ async function boot() {
 
     const route = parseRoute(location.pathname);
 
-    // Public author profile (/helper/u/:username)
+    // Public author profile (/u/:username)
     if (route.type === 'publicProfile') {
       await renderPublicProfile(root, client, route.username);
       return;

@@ -19,10 +19,18 @@ export const PAGE_TO_ROUTE = {
   logs: 'logs',
 };
 
+export function getBaseUrl() {
+  const envBase = typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL;
+  return (envBase || '/').replace(/\/+$/, '') + '/';
+}
+
 export function normalizeSubpath(pathname) {
-  return String(pathname || '')
-    .replace(/^\/helper\/?/, '')
-    .replace(/\/+$/, '');
+  const base = getBaseUrl();
+  let str = String(pathname || '');
+  if (base !== '/' && str.startsWith(base)) {
+    str = str.slice(base.length);
+  }
+  return str.replace(/^\/+/, '').replace(/\/+$/, '');
 }
 
 export function parseRoute(pathname) {
@@ -47,15 +55,13 @@ export function sanitizeNext(rawNext) {
   const cleanPath = rawNext.split('?')[0].split('#')[0];
   const sub = normalizeSubpath(cleanPath);
   if (sub !== 'login' && Object.prototype.hasOwnProperty.call(KNOWN_PRIVATE_PAGES, sub)) {
-    return `/helper/${sub ? sub : ''}`;
+    return appPath(sub);
   }
   return null;
 }
 
 export function pageHref(page) {
-  const base = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL
-    ? import.meta.env.BASE_URL
-    : '/helper/').replace(/\/+$/, '') + '/';
+  const base = getBaseUrl();
   if (page === 'todos') return base;
   const route = PAGE_TO_ROUTE[page] || page;
   return `${base}${String(route).replace(/^\/+/, '')}`;
@@ -63,14 +69,12 @@ export function pageHref(page) {
 
 /** Canonical absolute URL rooted at BASE_URL — use for location.replace() / redirects. */
 export function appPath(path) {
-  const base = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL
-    ? import.meta.env.BASE_URL
-    : '/helper/').replace(/\/+$/, '') + '/';
+  const base = getBaseUrl();
   return path ? `${base}${String(path).replace(/^\/+/, '')}` : base;
 }
 
 export function brandHtml(href) {
-  const base = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL ? import.meta.env.BASE_URL : '/helper/').replace(/\/+$/, '') + '/';
+  const base = getBaseUrl();
   const target = href !== undefined && href !== null ? href : base;
   return `<a class="brand" href="${target}">h<span>elper</span><img class="brand-mark" src="${base}favicon.svg" alt="" width="24" height="24"></a>`;
 }

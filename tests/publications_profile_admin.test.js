@@ -8,7 +8,7 @@ import { mountArticles } from '../src/articles.js';
 import { loadLocalImage, validateImageFile, isSupportedImageFormat, getRotatedSource, editImage } from '../src/image-editor.js';
 
 test('Editor toolbar contains format-bar__format and format-bar__view groups with split slider behavior', () => {
-  const dom = new JSDOM('<section id="editor"></section>', { url: 'https://example.test/helper/' });
+  const dom = new JSDOM('<section id="editor"></section>', { url: 'https://example.test/' });
   const names = ['window', 'document', 'localStorage'];
   const previous = Object.fromEntries(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   for (const [name, value] of Object.entries({ window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage })) {
@@ -143,7 +143,7 @@ test('Public vs unlisted vs private article access control semantics', () => {
 });
 
 test('Article owner can delete own article and UI updates state accordingly', async () => {
-  const dom = new JSDOM('<section id="articles-root"></section>', { url: 'https://example.test/helper/' });
+  const dom = new JSDOM('<section id="articles-root"></section>', { url: 'https://example.test/' });
   const names = ['window', 'document', 'localStorage', 'confirm'];
   const previous = Object.fromEntries(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   for (const [name, value] of Object.entries({
@@ -360,7 +360,7 @@ test('Profile bio validation accepts up to 280 characters and get_public_profile
 });
 
 test('Saved private article deletion requires confirmation', async () => {
-  const dom = new JSDOM('<section id="articles-root"></section>', { url: 'https://example.test/helper/' });
+  const dom = new JSDOM('<section id="articles-root"></section>', { url: 'https://example.test/' });
   const names = ['window', 'document', 'localStorage', 'confirm'];
   const previous = Object.fromEntries(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
 
@@ -429,7 +429,7 @@ test('Saved private article deletion requires confirmation', async () => {
 });
 
 test('Saved unlisted article deletion requires confirmation', async () => {
-  const dom = new JSDOM('<section id="articles-root"></section>', { url: 'https://example.test/helper/' });
+  const dom = new JSDOM('<section id="articles-root"></section>', { url: 'https://example.test/' });
   const names = ['window', 'document', 'localStorage', 'confirm'];
   const previous = Object.fromEntries(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
 
@@ -498,7 +498,7 @@ test('Saved unlisted article deletion requires confirmation', async () => {
 });
 
 test('Saved public article deletion requires confirmation', async () => {
-  const dom = new JSDOM('<section id="articles-root"></section>', { url: 'https://example.test/helper/' });
+  const dom = new JSDOM('<section id="articles-root"></section>', { url: 'https://example.test/' });
   const names = ['window', 'document', 'localStorage', 'confirm'];
   const previous = Object.fromEntries(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
 
@@ -935,7 +935,7 @@ test('image format validation accepts PNG/JPEG/WebP/GIF and rejects HEIC/AVIF/un
 });
 
 test('image decode failure logs only safe metadata without file contents and returns decode stage error', async () => {
-  const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { url: 'https://example.test/helper/' });
+  const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { url: 'https://example.test/' });
   const origWindow = globalThis.window;
   const origDoc = globalThis.document;
   const origImage = globalThis.Image;
@@ -1001,7 +1001,7 @@ test('storage upload failure displays user-friendly error and logs diagnostic de
   console.error = (...args) => loggedErrors.push(args);
 
   try {
-    const dom = new JSDOM('<main id="app"><div id="editor"></div></main>', { url: 'https://example.test/helper/' });
+    const dom = new JSDOM('<main id="app"><div id="editor"></div></main>', { url: 'https://example.test/' });
     const host = dom.window.document.querySelector('#app');
 
     let capturedNotice = null;
@@ -1136,7 +1136,7 @@ test('getRotatedSource swaps dimensions for 90 and 270 degrees and preserves for
 });
 
 test('editImage cropShape option applies circle mask for circle and rect mask for rect/default', async () => {
-  const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { url: 'https://example.test/helper/' });
+  const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { url: 'https://example.test/' });
   const origWindow = globalThis.window;
   const origDoc = globalThis.document;
   const origImage = globalThis.Image;
@@ -1245,7 +1245,7 @@ test('avatar uses cropShape: circle and cover/body images use cropShape: rect', 
 });
 
 test('editImage rotate controls cycle rotation angles and reset restores initial state', async () => {
-  const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { url: 'https://example.test/helper/' });
+  const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { url: 'https://example.test/' });
   const origWindow = globalThis.window;
   const origDoc = globalThis.document;
   const origImage = globalThis.Image;
