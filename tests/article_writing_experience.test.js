@@ -4,12 +4,45 @@ import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 import path from 'node:path';
 import { mountArticles } from '../src/articles.js';
+import { attachEditor } from '../src/editor.js';
 
 function setupDom() {
   const dom = new JSDOM('<!DOCTYPE html><html><body><div id="articles-root"></div></body></html>', {
     url: 'https://helper.slutvibe.site/',
   });
-  const names = ['window', 'document', 'navigator', 'localStorage', 'confirm', 'crypto', 'FileReader'];
+
+  const mockCtx = {
+    save: () => {},
+    restore: () => {},
+    translate: () => {},
+    rotate: () => {},
+    drawImage: () => {},
+    clearRect: () => {},
+  };
+  dom.window.HTMLCanvasElement.prototype.getContext = () => mockCtx;
+  dom.window.HTMLCanvasElement.prototype.toBlob = function(cb) {
+    cb(new dom.window.Blob(['cropped-data'], { type: 'image/jpeg' }));
+  };
+
+  class MockImage {
+    constructor() {
+      this.naturalWidth = 800;
+      this.naturalHeight = 600;
+    }
+    set src(v) {
+      setTimeout(() => { if (this.onload) this.onload(); }, 0);
+    }
+    decode() { return Promise.resolve(); }
+  }
+  dom.window.Image = MockImage;
+
+  const mockUrl = Object.assign(Object.create(dom.window.URL), {
+    createObjectURL: () => 'blob:https://example.test/mock-crop-id',
+    revokeObjectURL: () => {},
+  });
+  dom.window.URL = mockUrl;
+
+  const names = ['window', 'document', 'navigator', 'localStorage', 'confirm', 'crypto', 'FileReader', 'Blob', 'File', 'URL', 'Image'];
   const previous = Object.fromEntries(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
 
   for (const [name, value] of Object.entries({
@@ -20,6 +53,10 @@ function setupDom() {
     confirm: () => true,
     crypto: dom.window.crypto || { randomUUID: () => '11111111-2222-3333-4444-555555555555' },
     FileReader: dom.window.FileReader,
+    Blob: dom.window.Blob,
+    File: dom.window.File,
+    URL: mockUrl,
+    Image: MockImage,
   })) {
     Object.defineProperty(globalThis, name, { value, writable: true, configurable: true });
   }
@@ -404,6 +441,224 @@ test('ARTICLE WRITER: editor, split, and preview mode switching with title and b
     assert.equal(titlePreview.hidden, true);
     assert.equal(textarea.hidden, false);
     assert.equal(preview.hidden, true);
+  } finally {
+    cleanup();
+  }
+});
+
+test('ARTICLE IMAGE PIPELINE: generic editor.js onImageFile, drag/drop, and removal of old task string', async () => {
+  const editorCode = fs.readFileSync(path.resolve(process.cwd(), 'src/editor.js'), 'utf8');
+  assert.equal(editorCode.includes('Для изображения в задаче'), false, 'Old task-specific error string must be removed from generic editor.js');
+
+  const { dom, cleanup } = setupDom();
+  try {
+    const host = dom.window.document.createElement('div');
+    dom.window.document.body.append(host);
+
+    // 1. Generic editor with onImageFile
+    let receivedFile = null;
+    let receivedInsertOpts = null;
+    const editor = attachEditor(host, {
+      variant: 'article',
+      onImageFile: async (file, opts) => {
+        receivedFile = file;
+        receivedInsertOpts = opts;
+        opts.insert('\n![test-image|640](https://example.com/test.png)\n');
+      },
+    });
+
+    const file = new dom.window.File(['content'], 'sample.png', { type: 'image/png' });
+
+    // Simulate paste with clipboardData containing image
+    const pasteEvent = new dom.window.Event('paste', { bubbles: true, cancelable: true });
+    pasteEvent.clipboardData = { files: [file] };
+    host.dispatchEvent(pasteEvent);
+
+    assert.equal(pasteEvent.defaultPrevented, true, 'Paste event must be prevented');
+    assert.equal(receivedFile, file, 'onImageFile must receive the pasted image file');
+    assert.ok(receivedInsertOpts && typeof receivedInsertOpts.insert === 'function', 'onImageFile must receive insert helper');
+    assert.match(editor.getValue(), /!\[test-image\|640\]\(https:\/\/example\.com\/test\.png\)/, 'Markdown must be inserted');
+    assert.equal(editor.getValue().includes('текст'), false, 'Rogue placeholder "текст" must not be appended');
+
+    // Dragover with image item
+    const dragoverEvent = new dom.window.Event('dragover', { bubbles: true, cancelable: true });
+    dragoverEvent.dataTransfer = { items: [{ type: 'image/png' }] };
+    host.dispatchEvent(dragoverEvent);
+    assert.equal(dragoverEvent.defaultPrevented, true, 'Dragover must be accepted when onImageFile exists');
+    assert.ok(host.classList.contains('drag-image'), 'Must add drag-image class on dragover');
+
+    // Drop with image file
+    receivedFile = null;
+    const dropFile = new dom.window.File(['drop-content'], 'dropped.png', { type: 'image/png' });
+    const dropEvent = new dom.window.Event('drop', { bubbles: true, cancelable: true });
+    dropEvent.dataTransfer = { files: [dropFile] };
+    host.dispatchEvent(dropEvent);
+    assert.equal(dropEvent.defaultPrevented, true, 'Drop event must be prevented');
+    assert.equal(receivedFile, dropFile, 'onImageFile must receive the dropped image file');
+
+    // 2. Generic editor without imageStore and without onImageFile (e.g. task editor)
+    const hostTask = dom.window.document.createElement('div');
+    dom.window.document.body.append(hostTask);
+    let taskError = null;
+    attachEditor(hostTask, {
+      variant: 'basic',
+      onError: msg => { taskError = msg; },
+    });
+
+    const taskPaste = new dom.window.Event('paste', { bubbles: true, cancelable: true });
+    taskPaste.clipboardData = { files: [file] };
+    hostTask.dispatchEvent(taskPaste);
+    assert.equal(taskError, 'Вставка изображения из файла здесь не поддерживается.', 'Task editor must show neutral error');
+
+    // 3. Notes editor with imageStore retains local attachments
+    const hostNote = dom.window.document.createElement('div');
+    dom.window.document.body.append(hostNote);
+    const mockImageStore = {
+      add: ({ name, type, data }) => `note-att-${name}`,
+      get: () => null,
+    };
+    const noteEditor = attachEditor(hostNote, {
+      variant: 'basic',
+      imageStore: mockImageStore,
+    });
+
+    const notePaste = new dom.window.Event('paste', { bubbles: true, cancelable: true });
+    notePaste.clipboardData = { files: [file] };
+    hostNote.dispatchEvent(notePaste);
+
+    await new Promise(r => setTimeout(r, 20));
+    assert.match(noteEditor.getValue(), /attachment:\/\/note-att-sample\.png/, 'Note editor must still create attachment:// links');
+  } finally {
+    cleanup();
+  }
+});
+
+test('ARTICLE IMAGE PIPELINE: article editor wires onImageFile to unified pipeline (paste, drag/drop, dialog)', async () => {
+  const { dom, cleanup } = setupDom();
+
+  try {
+    let uploadedPath = null;
+    const uploadedUrls = [];
+    const client = {
+      auth: { getSession: async () => ({ data: { session: { user: { id: 'u1' } } } }) },
+      from(table) {
+        if (table === 'articles') {
+          return {
+            select: () => ({
+              order: async () => ({
+                data: [{
+                  id: 'art-img-1',
+                  title: 'Статья с фото',
+                  slug: 'photo-article',
+                  body: 'Начальный текст.',
+                  access: 'private',
+                  published: false,
+                  updated_at: '2026-09-19T12:00:00Z',
+                }],
+                error: null,
+              }),
+            }),
+          };
+        }
+        return {};
+      },
+      storage: {
+        from(bucket) {
+          assert.equal(bucket, 'article-media', 'Must upload to article-media storage bucket');
+          return {
+            upload: async (path, file) => {
+              uploadedPath = path;
+              return { error: null };
+            },
+            getPublicUrl: path => {
+              const url = `https://storage.example.test/article-media/${path}`;
+              uploadedUrls.push(url);
+              return { data: { publicUrl: url } };
+            },
+          };
+        },
+      },
+    };
+
+    let lastNotice = null;
+    const host = dom.window.document.querySelector('#articles-root');
+    mountArticles(host, {
+      client,
+      userId: 'u1',
+      username: 'writer',
+      notice: msg => { lastNotice = msg; },
+      requireSession: async () => {},
+    });
+
+    await new Promise(r => setTimeout(r, 40));
+
+    const bodyEditor = host.querySelector('.article-body-editor');
+    assert.ok(bodyEditor, 'Body editor container must exist');
+    const textarea = bodyEditor.querySelector('textarea');
+    assert.ok(textarea, 'Textarea must exist');
+
+    // 1. Test paste of an image file into article body
+    const pastedFile = new dom.window.File(['pasted-img-bytes'], 'screenshot.png', { type: 'image/png' });
+    const pasteEv = new dom.window.Event('paste', { bubbles: true, cancelable: true });
+    pasteEv.clipboardData = { files: [pastedFile] };
+    bodyEditor.dispatchEvent(pasteEv);
+
+    await new Promise(r => setTimeout(r, 40));
+
+    // Cropper modal should have appeared
+    const cropModal = dom.window.document.querySelector('.image-editor-modal');
+    assert.ok(cropModal, 'Crop modal must appear when image is pasted');
+    const saveCropBtn = cropModal.querySelector('.save-btn');
+    assert.ok(saveCropBtn, 'Cropper save button must exist');
+    saveCropBtn.click();
+
+    await new Promise(r => setTimeout(r, 40));
+
+    assert.match(uploadedPath, /^u1\/[a-f0-9-]+-screenshot\.png$/);
+    assert.match(textarea.value, /!\[screenshot\|640\]\(https:\/\/storage\.example\.test\/article-media\/u1\/[a-f0-9-]+-screenshot\.png\)/);
+    assert.equal(lastNotice, 'Изображение вставлено в текст.');
+
+    // 2. Test drop of an image file into article body
+    const droppedFile = new dom.window.File(['dropped-img-bytes'], 'chart.webp', { type: 'image/webp' });
+    const dropEv = new dom.window.Event('drop', { bubbles: true, cancelable: true });
+    dropEv.dataTransfer = { files: [droppedFile] };
+    bodyEditor.dispatchEvent(dropEv);
+
+    await new Promise(r => setTimeout(r, 40));
+
+    const cropModal2 = dom.window.document.querySelector('.image-editor-modal');
+    assert.ok(cropModal2, 'Crop modal must appear when image is dropped');
+    const saveCropBtn2 = cropModal2.querySelector('.save-btn');
+    saveCropBtn2.click();
+
+    await new Promise(r => setTimeout(r, 40));
+
+    assert.match(textarea.value, /!\[chart\|640\]\(https:\/\/storage\.example\.test\/article-media\/u1\/[a-f0-9-]+-chart\.webp\)/);
+
+    // 3. Test image button dialog -> "Выбрать файл" reuses the same pipeline
+    const imgBtn = host.querySelector('button[aria-label="Изображение"]');
+    assert.ok(imgBtn, 'Toolbar image button must exist');
+    imgBtn.click();
+
+    const dialogScrim = dom.window.document.querySelector('.dialog-scrim');
+    assert.ok(dialogScrim, 'Image insertion dialog scrim must open');
+    const dialogFileInput = dialogScrim.querySelector('input[type="file"]');
+    assert.ok(dialogFileInput, 'File input must exist in image dialog');
+
+    const dialogFile = new dom.window.File(['dialog-img'], 'diagram.jpeg', { type: 'image/jpeg' });
+    Object.defineProperty(dialogFileInput, 'files', { value: [dialogFile], configurable: true });
+    dialogFileInput.onchange();
+
+    await new Promise(r => setTimeout(r, 40));
+
+    const cropModal3 = dom.window.document.querySelector('.image-editor-modal');
+    assert.ok(cropModal3, 'Crop modal must appear when file is picked in dialog');
+    const saveCropBtn3 = cropModal3.querySelector('.save-btn');
+    saveCropBtn3.click();
+
+    await new Promise(r => setTimeout(r, 40));
+
+    assert.match(textarea.value, /!\[diagram\|640\]\(https:\/\/storage\.example\.test\/article-media\/u1\/[a-f0-9-]+-diagram\.jpeg\)/);
   } finally {
     cleanup();
   }

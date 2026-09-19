@@ -23,6 +23,7 @@ export function attachEditor(host, {
   onLink = () => {},
   onError = () => {},
   onImageRequest = null,
+  onImageFile = null,
   id = 'source',
   imageStore = null,
   variant = 'basic',
@@ -141,8 +142,10 @@ export function attachEditor(host, {
     pushState();
     const start = text.selectionStart;
     const end = text.selectionEnd;
-    const selection = text.value.slice(start, end) || placeholder;
-    text.setRangeText(before + selection + after, start, end, 'select');
+    const hasSelection = start !== end;
+    const selection = hasSelection ? text.value.slice(start, end) : (after === '' ? '' : placeholder);
+    const selectMode = (hasSelection || after !== '') ? 'select' : 'end';
+    text.setRangeText(before + selection + after, start, end, selectMode);
     lastValue = text.value;
     text.focus();
     emit();
@@ -784,32 +787,44 @@ export function attachEditor(host, {
   fileInput.accept = 'image/png,image/jpeg,image/webp,image/gif';
   fileInput.hidden = true;
 
-  async function attachImage(image) {
-    if (!/^image\/(png|jpeg|webp|gif)$/.test(image.type) || image.size > 1024 * 1024) {
-      onError('Выбери PNG, JPEG, WebP или GIF до 1 МБ. Для больших фото можно вставить HTTPS-ссылку.');
-      return;
-    }
-    if (!imageStore) {
-      onError('Для изображения в задаче вставь HTTPS-ссылку. Локальные фото доступны в заметках.');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (!host.isConnected) return;
+  async function handleImageFile(file) {
+    if (!file) return;
+
+    if (onImageFile) {
       try {
-        const data = String(reader.result);
-        const reference = `attachment://${imageStore.add({ name: image.name, type: image.type, data })}`;
-        insert('\n![изображение|640](', ')\n', reference);
-      } catch {
-        onError('Не удалось сохранить изображение в заметке.');
+        await onImageFile(file, { insert });
+      } catch (err) {
+        onError(err?.message || 'Ошибка загрузки изображения.');
       }
-    };
-    reader.onerror = () => onError('Не удалось прочитать изображение.');
-    reader.readAsDataURL(image);
+      return;
+    }
+
+    if (imageStore) {
+      if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type) || file.size > 1024 * 1024) {
+        onError('Выбери PNG, JPEG, WebP или GIF до 1 МБ. Для больших фото можно вставить HTTPS-ссылку.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (!host.isConnected) return;
+        try {
+          const data = String(reader.result);
+          const reference = `attachment://${imageStore.add({ name: file.name, type: file.type, data })}`;
+          insert('\n![изображение|640](', ')\n', reference);
+        } catch {
+          onError('Не удалось сохранить изображение в заметке.');
+        }
+      };
+      reader.onerror = () => onError('Не удалось прочитать изображение.');
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    onError('Вставка изображения из файла здесь не поддерживается.');
   }
 
   fileInput.onchange = () => {
-    if (fileInput.files[0]) attachImage(fileInput.files[0]);
+    if (fileInput.files[0]) handleImageFile(fileInput.files[0]);
     fileInput.value = '';
   };
 
@@ -828,12 +843,14 @@ export function attachEditor(host, {
     const image = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith('image/'));
     if (image) {
       e.preventDefault();
-      attachImage(image);
+      handleImageFile(image);
     }
   });
 
+  const canAcceptImage = Boolean(imageStore || onImageFile);
+
   host.addEventListener('dragover', e => {
-    if (imageStore && [...(e.dataTransfer?.items || [])].some(item => item.type.startsWith('image/'))) {
+    if (canAcceptImage && [...(e.dataTransfer?.items || [])].some(item => item.type.startsWith('image/'))) {
       e.preventDefault();
       host.classList.add('drag-image');
     }
@@ -844,7 +861,7 @@ export function attachEditor(host, {
     const image = [...(e.dataTransfer?.files || [])].find(item => item.type.startsWith('image/'));
     if (image) {
       e.preventDefault();
-      attachImage(image);
+      handleImageFile(image);
     }
   });
 

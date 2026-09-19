@@ -266,7 +266,7 @@ export async function renderPublicProfile(host, client, username) {
   `;
 }
 
-function openArticleImageDialog({ uploadMedia, insert, notice }) {
+function openArticleImageDialog({ onInsertFile, uploadMedia, insert, notice }) {
   const modal = document.createElement('div');
   modal.className = 'dialog-scrim';
   modal.setAttribute('role', 'dialog');
@@ -355,23 +355,29 @@ function openArticleImageDialog({ uploadMedia, insert, notice }) {
     const file = fileInput.files[0];
     if (!file) return;
     try {
-      validateImageFile(file);
-      uploadStatus.textContent = 'Подготовка…';
-      const croppedBlob = await editImage(file, {
-        aspectRatio: null,
-        outputWidth: 1600,
-        outputHeight: 1200,
-        cropShape: 'rect',
-        title: 'Редактирование фото статьи',
-      });
-      if (!croppedBlob) {
-        uploadStatus.textContent = '';
-        return;
+      uploadStatus.textContent = 'Обработка…';
+      if (onInsertFile) {
+        await onInsertFile(file, insert);
+      } else if (uploadMedia) {
+        validateImageFile(file);
+        uploadStatus.textContent = 'Подготовка…';
+        const croppedBlob = await editImage(file, {
+          aspectRatio: null,
+          outputWidth: 1600,
+          outputHeight: 1200,
+          cropShape: 'rect',
+          title: 'Редактирование фото статьи',
+        });
+        if (!croppedBlob) {
+          uploadStatus.textContent = '';
+          return;
+        }
+        uploadStatus.textContent = 'Загрузка…';
+        const url = await uploadMedia(croppedBlob, file.name);
+        const safeAlt = (file.name || 'image').replace(/\.[^.]+$/, '').replace(/[\[\]]/g, '') || 'изображение';
+        insert(`\n![${safeAlt}|640](${url})\n`);
+        notice('Изображение вставлено в текст.');
       }
-      uploadStatus.textContent = 'Загрузка…';
-      const url = await uploadMedia(croppedBlob, file.name);
-      insert(`\n![${escapeHtml(file.name.replace(/\.[^.]+$/, ''))}|640](${url})\n`);
-      notice('Изображение вставлено в текст.');
       close();
     } catch (err) {
       uploadStatus.textContent = err.message || 'Ошибка загрузки';
@@ -426,6 +432,22 @@ export function mountArticles(host, { client, userId, username, profile, notice,
       throw err;
     }
     return url;
+  };
+
+  const insertArticleImageFile = async (file, insert) => {
+    validateImageFile(file);
+    const croppedBlob = await editImage(file, {
+      aspectRatio: null,
+      outputWidth: 1600,
+      outputHeight: 1200,
+      cropShape: 'rect',
+      title: 'Редактирование фото статьи',
+    });
+    if (!croppedBlob) return;
+    const url = await uploadMedia(croppedBlob, file.name);
+    const safeAlt = (file.name || 'image').replace(/\.[^.]+$/, '').replace(/[\[\]]/g, '') || 'изображение';
+    insert(`\n![${safeAlt}|640](${url})\n`);
+    notice('Изображение вставлено в текст.');
   };
 
   const save = async article => {
@@ -903,9 +925,12 @@ export function mountArticles(host, { client, userId, username, profile, notice,
           titlePreview.hidden = true;
         }
       },
+      onImageFile: async (file, { insert }) => {
+        await insertArticleImageFile(file, insert);
+      },
       onError: m => notice(m, true),
       onImageRequest: ({ insert }) => {
-        openArticleImageDialog({ uploadMedia, insert, notice });
+        openArticleImageDialog({ onInsertFile: insertArticleImageFile, uploadMedia, insert, notice });
       },
     });
 
