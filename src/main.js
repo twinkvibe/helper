@@ -5,6 +5,7 @@ import { mountArticles, publicArticleSlug, renderPublicArticle, renderPublicProf
 import { icon } from './icons.js';
 import { parseRoute, sanitizeNext, pageHref, brandHtml, appPath } from './router.js';
 import { editImage, validateImageFile } from './image-editor.js';
+import { FIELD_LABELS, ACTION_LABELS, ENTITY_LABELS, populateAuditDiffs } from './audit.js';
 import './style.css';
 import './workbench.css';
 
@@ -399,72 +400,6 @@ async function logs() {
       return;
     }
 
-    const FIELD_LABELS = {
-      access: 'Доступ',
-      title: 'Заголовок',
-      done: 'Статус',
-      role: 'Роль',
-      blocked: 'Блокировка',
-      list_name: 'Список',
-      due_date: 'Срок',
-      priority: 'Приоритет',
-      tags: 'Теги',
-      note_id: 'Заметка',
-      slug: 'Адрес (slug)',
-      excerpt: 'Краткое описание',
-      cover_url: 'Обложка',
-      published: 'Опубликовано',
-      published_at: 'Дата публикации',
-      username: 'Логин',
-      must_change_password: 'Смена пароля',
-    };
-
-    const ACTION_LABELS = {
-      insert: 'Создание',
-      update: 'Обновление',
-      delete: 'Удаление',
-      admin_article_access: 'Изменение доступа',
-      admin_article_delete: 'Удаление статьи',
-      role_change: 'Смена роли',
-      block: 'Блокировка',
-      unblock: 'Разблокировка',
-      password_reset: 'Сброс пароля',
-      user_create: 'Создание пользователя',
-      account_delete: 'Удаление аккаунта',
-      error: 'Ошибка клиента',
-    };
-
-    const ENTITY_LABELS = {
-      todos: 'Задача',
-      articles: 'Статья',
-      profiles: 'Профиль',
-      users: 'Аккаунт',
-      client: 'Клиент',
-    };
-
-    const formatVal = (field, val) => {
-      if (val === null || val === undefined) return '—';
-      if (field === 'access') {
-        if (val === 'private') return 'Приватно';
-        if (val === 'unlisted') return 'По ссылке';
-        if (val === 'public') return 'Общедоступно';
-      }
-      if (field === 'role') {
-        if (val === 'admin') return 'Администратор';
-        if (val === 'member') return 'Участник';
-      }
-      if (field === 'done') return val ? 'Выполнено' : 'Не выполнено';
-      if (field === 'blocked') return val ? 'Заблокирован' : 'Активен';
-      if (field === 'priority') {
-        if (val === 2) return 'Высокий';
-        if (val === 1) return 'Средний';
-        return 'Обычный';
-      }
-      if (field === 'tags' && Array.isArray(val)) return val.length ? val.join(', ') : '—';
-      if (typeof val === 'boolean') return val ? 'Да' : 'Нет';
-      return String(val);
-    };
-
     data.forEach(item => {
       const details = item.details || {};
       const actionName = ACTION_LABELS[item.action] || item.action;
@@ -478,94 +413,6 @@ async function logs() {
       if (details.title) objectLabel += ` «${details.title}»`;
       else if (details.username) objectLabel += ` @${details.username}`;
       else if (item.entity_id) objectLabel += ` #${item.entity_id.slice(0, 8)}`;
-
-      const diffRows = [];
-      const before = details.before;
-      const after = details.after;
-
-      if (before && after) {
-        const keys = details.changed_fields && Array.isArray(details.changed_fields)
-          ? details.changed_fields
-          : Object.keys({ ...before, ...after });
-
-        keys.forEach(k => {
-          if (k === 'description' || k === 'body') return;
-          const vBefore = before[k];
-          const vAfter = after[k];
-          diffRows.push(`
-            <div class="audit-diff-row">
-              <div class="audit-diff-field">${escape(FIELD_LABELS[k] || k)}</div>
-              <div class="audit-diff-values">
-                <span class="diff-before">${escape(formatVal(k, vBefore))}</span>
-                <span class="diff-arrow">→</span>
-                <span class="diff-after">${escape(formatVal(k, vAfter))}</span>
-              </div>
-            </div>
-          `);
-        });
-      }
-
-      if (details.body_changed) {
-        diffRows.push(`
-          <div class="audit-diff-row">
-            <div class="audit-diff-field">Содержимое статьи</div>
-            <div class="audit-diff-values">
-              <span>изменено: ${details.body_length_before ?? 0} → ${details.body_length_after ?? 0} символов</span>
-            </div>
-          </div>
-        `);
-      }
-
-      if (details.description_changed) {
-        diffRows.push(`
-          <div class="audit-diff-row">
-            <div class="audit-diff-field">Описание задачи</div>
-            <div class="audit-diff-values">
-              <span>изменено: ${details.description_length_before ?? 0} → ${details.description_length_after ?? 0} символов</span>
-            </div>
-          </div>
-        `);
-      }
-
-      if (before === null && after) {
-        diffRows.push(`
-          <div class="audit-diff-row">
-            <div class="audit-diff-field">Создан объект</div>
-            <div class="audit-diff-values">
-              ${Object.entries(after)
-                .filter(([k]) => k !== 'body' && k !== 'description')
-                .map(([k, v]) => `<span><strong>${escape(FIELD_LABELS[k] || k)}:</strong> ${escape(formatVal(k, v))}</span>`)
-                .join(', ')}
-            </div>
-          </div>
-        `);
-      }
-
-      if (after === null && before) {
-        diffRows.push(`
-          <div class="audit-diff-row">
-            <div class="audit-diff-field">Удалён объект</div>
-            <div class="audit-diff-values">
-              ${Object.entries(before)
-                .filter(([k]) => k !== 'body' && k !== 'description')
-                .map(([k, v]) => `<span><strong>${escape(FIELD_LABELS[k] || k)}:</strong> ${escape(formatVal(k, v))}</span>`)
-                .join(', ')}
-            </div>
-          </div>
-        `);
-      }
-
-      if (diffRows.length === 0 && Object.keys(details).length > 0) {
-        Object.entries(details).forEach(([k, v]) => {
-          if (['title', 'username', 'changed_fields', 'before', 'after', 'body_changed', 'description_changed'].includes(k)) return;
-          diffRows.push(`
-            <div class="audit-diff-row">
-              <div class="audit-diff-field">${escape(FIELD_LABELS[k] || k)}</div>
-              <div class="audit-diff-values"><span>${escape(formatVal(k, v))}</span></div>
-            </div>
-          `);
-        });
-      }
 
       const row = document.createElement('details');
       row.className = 'audit-row-item';
@@ -599,20 +446,33 @@ async function logs() {
               <span class="audit-meta-val">${escape(objectLabel)}</span>
             </div>
           </div>
-          ${diffRows.length > 0 ? `
-            <div class="audit-changes-section">
-              <h4 class="audit-changes-title">Изменения</h4>
-              <div class="audit-diff-table">
-                ${diffRows.join('')}
-              </div>
-            </div>
-          ` : ''}
+          <div class="audit-changes-section">
+            <h4 class="audit-changes-title">Изменения</h4>
+            <div class="audit-diff-table"></div>
+          </div>
           <details class="audit-raw-details">
             <summary>Сырые данные (JSON)</summary>
             <pre>${escape(JSON.stringify(details, null, 2))}</pre>
           </details>
         </div>
       `;
+
+      const diffTable = row.querySelector('.audit-diff-table');
+      const changesSection = row.querySelector('.audit-changes-section');
+
+      const renderDiff = () => {
+        if (row.dataset.diffRendered) return;
+        row.dataset.diffRendered = 'true';
+        populateAuditDiffs(diffTable, details);
+        if (!diffTable.children.length) {
+          changesSection.style.display = 'none';
+        }
+      };
+
+      row.addEventListener('toggle', () => {
+        if (row.open) renderDiff();
+      });
+
       list.append(row);
     });
   } catch (error) {

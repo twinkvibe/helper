@@ -1,4 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import {
+  handleCorsPreflight,
+  isAllowedOrigin,
+  createCorsResponse,
+} from './cors.ts';
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -6,21 +11,27 @@ const admin = createClient(
   { auth: { persistSession: false, autoRefreshToken: false } }
 );
 
-const allowed = new Set(['https://twinkvibe.github.io', 'http://127.0.0.1:5173', 'http://127.0.0.1:4173']);
-
 Deno.serve(async (req) => {
-  const origin = req.headers.get('origin') || '';
-  const headers = {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': allowed.has(origin) ? origin : 'https://twinkvibe.github.io',
-    'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Vary': 'Origin',
-    'Cache-Control': 'no-store',
-  };
-  const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers });
+  const origin = req.headers.get('origin');
 
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers });
+  if (req.method === 'OPTIONS') {
+    return handleCorsPreflight(req);
+  }
+
+  if (origin && !isAllowedOrigin(origin)) {
+    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+      status: 403,
+      headers: {
+        'Content-Type': 'application/json',
+        'Vary': 'Origin',
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
+  const reply = (status: number, body: unknown) =>
+    createCorsResponse(status, body, origin);
+
   if (req.method !== 'POST') return reply(405, { error: 'Метод не поддерживается' });
 
   try {
@@ -147,7 +158,7 @@ Deno.serve(async (req) => {
         username: body.username,
         changed_fields: ['user'],
         before: null,
-        after: { username: body.username, role },
+        after: { username: body.username, role: 'member' },
       });
       return reply(200, { ok: true });
     }
