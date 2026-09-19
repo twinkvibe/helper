@@ -1152,6 +1152,7 @@ header {
   cursor: grab;
   touch-action: none;
   max-width: 100%;
+  box-sizing: content-box;
 }
 
 .crop-container:active {
@@ -1166,25 +1167,93 @@ header {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+.crop-overlay--rect {
   border: 1px dashed rgba(210, 244, 119, 0.35);
   border-radius: inherit;
+}
+
+.crop-overlay--circle {
+  border-radius: 50%;
+  box-shadow: 0 0 0 9999px rgba(9, 12, 10, 0.65);
+  border: 1.5px solid rgba(210, 244, 119, 0.85);
 }
 
 .image-editor-controls {
   width: 100%;
 }
 
+.image-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.image-editor-transform-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.image-editor-transform-actions .icon-button {
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+}
+
+.image-editor-transform-actions .reset-btn {
+  width: auto;
+  min-height: 32px;
+  padding: 4px 10px;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-secondary);
+}
+
+.image-editor-transform-actions .reset-btn:hover {
+  color: var(--text);
+}
+
 .zoom-slider-label {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   font-size: 13px;
   color: var(--text-secondary);
+  flex: 1;
+  min-width: 180px;
+  max-width: 260px;
 }
 
 .zoom-slider-label input[type="range"] {
   flex: 1;
   accent-color: var(--accent);
+}
+
+@media (max-width: 480px) {
+  .image-editor-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .image-editor-transform-actions {
+    justify-content: center;
+  }
+  .zoom-slider-label {
+    max-width: 100%;
+  }
 }
 
 .image-editor-footer {

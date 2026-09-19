@@ -369,6 +369,7 @@ function openArticleImageDialog({ uploadMedia, insert, notice }) {
         aspectRatio: null,
         outputWidth: 1600,
         outputHeight: 1200,
+        cropShape: 'rect',
         title: 'Редактирование фото статьи',
       });
       if (!croppedBlob) {
@@ -677,6 +678,7 @@ export function mountArticles(host, { client, userId, username, notice, requireS
             aspectRatio: 16 / 9,
             outputWidth: 1600,
             outputHeight: 900,
+            cropShape: 'rect',
             title: 'Обложка статьи (16:9)',
           });
           if (!croppedBlob) {

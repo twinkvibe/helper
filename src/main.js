@@ -729,7 +729,8 @@ function settings() {
         aspectRatio: 1,
         outputWidth: 512,
         outputHeight: 512,
-        title: 'Кадрирование аватарки (1:1)',
+        cropShape: 'circle',
+        title: 'Кадрирование аватарки',
       });
       if (!croppedBlob) return;
 

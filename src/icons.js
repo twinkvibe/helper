@@ -3,7 +3,7 @@ import {
   Quote, Image, Heading1, Heading2, Heading3, ImagePlus, Search, Plus,
   RefreshCw, CalendarDays, MoreHorizontal, Download, Upload, Trash2,
   FileText, CheckSquare, Settings, Users, LogOut, Newspaper, History,
-  Menu, X, createElement,
+  Menu, X, RotateCcw, RotateCw, createElement,
 } from 'lucide';
 
 const icons = {
@@ -39,6 +39,9 @@ const icons = {
   logout: LogOut,
   menu: Menu,
   close: X,
+  rotateLeft: RotateCcw,
+  rotateRight: RotateCw,
+  reset: RefreshCw,
 };
 
 export function icon(name, label = '') {

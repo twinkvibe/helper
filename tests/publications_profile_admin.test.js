@@ -5,7 +5,7 @@ import path from 'node:path';
 import { JSDOM } from 'jsdom';
 import { attachEditor } from '../src/editor.js';
 import { mountArticles } from '../src/articles.js';
-import { loadLocalImage, validateImageFile, isSupportedImageFormat } from '../src/image-editor.js';
+import { loadLocalImage, validateImageFile, isSupportedImageFormat, getRotatedSource, editImage } from '../src/image-editor.js';
 
 test('Editor toolbar contains format-bar__format and format-bar__view groups with split slider behavior', () => {
   const dom = new JSDOM('<section id="editor"></section>', { url: 'https://example.test/helper/' });
@@ -1076,5 +1076,307 @@ test('storage upload failure displays user-friendly error and logs diagnostic de
     assert.equal(storageLog[1].message, 'new row violates row-level security policy for "article-media"');
   } finally {
     console.error = origConsoleError;
+  }
+});
+
+test('getRotatedSource swaps dimensions for 90 and 270 degrees and preserves for 0 and 180', () => {
+  const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
+  const origDoc = globalThis.document;
+  globalThis.document = dom.window.document;
+  try {
+    const mockCtx = {
+      save: () => {},
+      restore: () => {},
+      translate: () => {},
+      rotate: () => {},
+      drawImage: () => {},
+    };
+    dom.window.HTMLCanvasElement.prototype.getContext = () => mockCtx;
+
+    const img = {
+      naturalWidth: 800,
+      naturalHeight: 600,
+      width: 800,
+      height: 600,
+    };
+
+    // 0 deg
+    const rot0 = getRotatedSource(img, 0);
+    assert.equal(rot0.width, 800);
+    assert.equal(rot0.height, 600);
+    assert.equal(rot0.source, img);
+
+    // 90 deg -> swapped
+    const rot90 = getRotatedSource(img, 90);
+    assert.equal(rot90.width, 600);
+    assert.equal(rot90.height, 800);
+
+    // 180 deg -> original orientation
+    const rot180 = getRotatedSource(img, 180);
+    assert.equal(rot180.width, 800);
+    assert.equal(rot180.height, 600);
+
+    // 270 deg -> swapped
+    const rot270 = getRotatedSource(img, 270);
+    assert.equal(rot270.width, 600);
+    assert.equal(rot270.height, 800);
+
+    // 360 deg -> normalized to 0
+    const rot360 = getRotatedSource(img, 360);
+    assert.equal(rot360.width, 800);
+    assert.equal(rot360.height, 600);
+
+    // -90 deg -> normalized to 270
+    const rotNeg90 = getRotatedSource(img, -90);
+    assert.equal(rotNeg90.width, 600);
+    assert.equal(rotNeg90.height, 800);
+  } finally {
+    globalThis.document = origDoc;
+  }
+});
+
+test('editImage cropShape option applies circle mask for circle and rect mask for rect/default', async () => {
+  const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { url: 'https://example.test/helper/' });
+  const origWindow = globalThis.window;
+  const origDoc = globalThis.document;
+  const origImage = globalThis.Image;
+  const origUrl = globalThis.URL;
+  const origBlob = globalThis.Blob;
+
+  try {
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.Blob = dom.window.Blob;
+
+    const mockCtx = {
+      save: () => {},
+      restore: () => {},
+      translate: () => {},
+      rotate: () => {},
+      drawImage: () => {},
+      clearRect: () => {},
+    };
+    dom.window.HTMLCanvasElement.prototype.getContext = () => mockCtx;
+
+    class MockImage {
+      constructor() {
+        this.naturalWidth = 500;
+        this.naturalHeight = 500;
+      }
+      set src(v) {
+        setTimeout(() => { if (this.onload) this.onload(); }, 0);
+      }
+      decode() { return Promise.resolve(); }
+    }
+    globalThis.Image = MockImage;
+    globalThis.URL = {
+      createObjectURL: () => 'blob:https://example.test/mock-id',
+      revokeObjectURL: () => {},
+    };
+
+    const file = new dom.window.Blob(['data'], { type: 'image/png' });
+
+    // 1. Circle cropShape
+    const pCircle = editImage(file, { cropShape: 'circle', aspectRatio: 1 });
+    await new Promise(r => setTimeout(r, 10));
+    const circleModal = dom.window.document.querySelector('.image-editor-modal');
+    assert.ok(circleModal, 'Circle modal should be in DOM');
+    const circleOverlay = circleModal.querySelector('.crop-overlay');
+    assert.ok(circleOverlay.classList.contains('crop-overlay--circle'), 'Must have .crop-overlay--circle');
+    assert.ok(!circleOverlay.classList.contains('crop-overlay--rect'), 'Must not have .crop-overlay--rect');
+    circleModal.querySelector('.cancel-btn').click();
+    await pCircle;
+
+    // 2. Rect cropShape (cover)
+    const pRect = editImage(file, { cropShape: 'rect', aspectRatio: 16 / 9 });
+    await new Promise(r => setTimeout(r, 10));
+    const rectModal = dom.window.document.querySelector('.image-editor-modal');
+    assert.ok(rectModal, 'Rect modal should be in DOM');
+    const rectOverlay = rectModal.querySelector('.crop-overlay');
+    assert.ok(rectOverlay.classList.contains('crop-overlay--rect'), 'Must have .crop-overlay--rect');
+    assert.ok(!rectOverlay.classList.contains('crop-overlay--circle'), 'Must not have .crop-overlay--circle');
+    rectModal.querySelector('.cancel-btn').click();
+    await pRect;
+
+    // 3. Default (no cropShape specified) should be rect
+    const pDefault = editImage(file, { aspectRatio: 1 });
+    await new Promise(r => setTimeout(r, 10));
+    const defModal = dom.window.document.querySelector('.image-editor-modal');
+    assert.ok(defModal, 'Default modal should be in DOM');
+    const defOverlay = defModal.querySelector('.crop-overlay');
+    assert.ok(defOverlay.classList.contains('crop-overlay--rect'), 'Default must have .crop-overlay--rect');
+    assert.ok(!defOverlay.classList.contains('crop-overlay--circle'), 'Default must not have .crop-overlay--circle');
+    defModal.querySelector('.cancel-btn').click();
+    await pDefault;
+  } finally {
+    globalThis.window = origWindow;
+    globalThis.document = origDoc;
+    globalThis.Image = origImage;
+    globalThis.URL = origUrl;
+    globalThis.Blob = origBlob;
+  }
+});
+
+test('avatar uses cropShape: circle and cover/body images use cropShape: rect', () => {
+  const mainSrc = fs.readFileSync(path.resolve('src/main.js'), 'utf8');
+  const articlesSrc = fs.readFileSync(path.resolve('src/articles.js'), 'utf8');
+
+  // Avatar in main.js
+  assert.ok(
+    mainSrc.includes("cropShape: 'circle'"),
+    'main.js must pass cropShape: "circle" for avatar'
+  );
+  assert.ok(
+    mainSrc.includes("title: 'Кадрирование аватарки'"),
+    'main.js must pass title: "Кадрирование аватарки"'
+  );
+
+  // Cover in articles.js (16:9)
+  assert.ok(
+    articlesSrc.includes("cropShape: 'rect'") && articlesSrc.includes("aspectRatio: 16 / 9"),
+    'articles.js must configure cover cropper with cropShape: "rect"'
+  );
+
+  // Body image in articles.js
+  assert.ok(
+    articlesSrc.includes("title: 'Редактирование фото статьи'") && articlesSrc.includes("cropShape: 'rect'"),
+    'articles.js must configure body image cropper with cropShape: "rect"'
+  );
+});
+
+test('editImage rotate controls cycle rotation angles and reset restores initial state', async () => {
+  const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { url: 'https://example.test/helper/' });
+  const origWindow = globalThis.window;
+  const origDoc = globalThis.document;
+  const origImage = globalThis.Image;
+  const origUrl = globalThis.URL;
+  const origBlob = globalThis.Blob;
+
+  try {
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.Blob = dom.window.Blob;
+
+    const drawnImages = [];
+    const mockCtx = {
+      save: () => {},
+      restore: () => {},
+      translate: () => {},
+      rotate: () => {},
+      drawImage: (...args) => drawnImages.push(args),
+      clearRect: () => {},
+      imageSmoothingEnabled: true,
+      imageSmoothingQuality: 'high',
+    };
+    dom.window.HTMLCanvasElement.prototype.getContext = () => mockCtx;
+    dom.window.HTMLCanvasElement.prototype.toBlob = function(cb, type) {
+      setTimeout(() => cb(new dom.window.Blob(['cropped-blob-bytes'], { type: type || 'image/png' })), 0);
+    };
+
+    class MockImage {
+      constructor() {
+        this.naturalWidth = 800;
+        this.naturalHeight = 600;
+      }
+      set src(v) {
+        setTimeout(() => { if (this.onload) this.onload(); }, 0);
+      }
+      decode() { return Promise.resolve(); }
+    }
+    globalThis.Image = MockImage;
+    globalThis.URL = {
+      createObjectURL: () => 'blob:https://example.test/mock-id',
+      revokeObjectURL: () => {},
+    };
+
+    const file = new dom.window.Blob(['data'], { type: 'image/png' });
+    // aspectRatio: null allows natural aspect ratio to test viewport and rotation changes
+    const cropPromise = editImage(file, { aspectRatio: null, cropShape: 'rect' });
+    await new Promise(r => setTimeout(r, 10));
+
+    const modal = dom.window.document.querySelector('.image-editor-modal');
+    assert.ok(modal, 'Modal exists');
+
+    const rotateLeftBtn = modal.querySelector('.rotate-left-btn');
+    const rotateRightBtn = modal.querySelector('.rotate-right-btn');
+    const resetBtn = modal.querySelector('.reset-btn');
+    const zoomRange = modal.querySelector('.zoom-range');
+    const cropContainer = modal.querySelector('.crop-container');
+
+    assert.ok(rotateLeftBtn, 'Rotate left button exists');
+    assert.ok(rotateRightBtn, 'Rotate right button exists');
+    assert.ok(resetBtn, 'Reset button exists');
+    assert.equal(rotateLeftBtn.getAttribute('aria-label'), 'Повернуть влево на 90°');
+    assert.equal(rotateRightBtn.getAttribute('aria-label'), 'Повернуть вправо на 90°');
+    assert.equal(resetBtn.getAttribute('aria-label'), 'Сбросить');
+
+    // Initial aspect is landscape (800x600 -> container width > height)
+    const initialW = parseInt(cropContainer.style.width, 10);
+    const initialH = parseInt(cropContainer.style.height, 10);
+    assert.ok(initialW > initialH, 'Initially landscape container');
+
+    // Test Rotate Right: 0 -> 90 -> 180 -> 270 -> 0
+    // 90 deg: container should be portrait (w < h)
+    rotateRightBtn.click();
+    assert.ok(parseInt(cropContainer.style.width, 10) < parseInt(cropContainer.style.height, 10), '90 deg is portrait');
+
+    // 180 deg: container should be landscape (w > h)
+    rotateRightBtn.click();
+    assert.ok(parseInt(cropContainer.style.width, 10) > parseInt(cropContainer.style.height, 10), '180 deg is landscape');
+
+    // 270 deg: container should be portrait (w < h)
+    rotateRightBtn.click();
+    assert.ok(parseInt(cropContainer.style.width, 10) < parseInt(cropContainer.style.height, 10), '270 deg is portrait');
+
+    // 360/0 deg: container should be landscape again
+    rotateRightBtn.click();
+    assert.ok(parseInt(cropContainer.style.width, 10) > parseInt(cropContainer.style.height, 10), '0 deg is landscape');
+
+    // Test Rotate Left: 0 -> 270 -> 180 -> 90 -> 0
+    rotateLeftBtn.click();
+    assert.ok(parseInt(cropContainer.style.width, 10) < parseInt(cropContainer.style.height, 10), '270 deg is portrait');
+
+    rotateLeftBtn.click();
+    assert.ok(parseInt(cropContainer.style.width, 10) > parseInt(cropContainer.style.height, 10), '180 deg is landscape');
+
+    rotateLeftBtn.click();
+    assert.ok(parseInt(cropContainer.style.width, 10) < parseInt(cropContainer.style.height, 10), '90 deg is portrait');
+
+    rotateLeftBtn.click();
+    assert.ok(parseInt(cropContainer.style.width, 10) > parseInt(cropContainer.style.height, 10), '0 deg is landscape');
+
+    // Test Zoom change and Reset
+    zoomRange.value = '2.5';
+    zoomRange.dispatchEvent(new dom.window.Event('input'));
+    assert.equal(zoomRange.value, '2.5');
+
+    // Rotate to 90
+    rotateRightBtn.click();
+    // In our design, rotation resets userZoom to 1 to guarantee complete coverage
+    assert.equal(zoomRange.value, '1');
+
+    // Set zoom again to 2.0
+    zoomRange.value = '2.0';
+    zoomRange.dispatchEvent(new dom.window.Event('input'));
+
+    // Now click Reset: rotation returns to 0, container to landscape, zoom to 1
+    resetBtn.click();
+    assert.equal(zoomRange.value, '1');
+    assert.ok(parseInt(cropContainer.style.width, 10) > parseInt(cropContainer.style.height, 10), 'Reset returns landscape');
+
+    // Export crop after rotation produces Blob
+    rotateRightBtn.click();
+    const saveBtn = modal.querySelector('.save-btn');
+    saveBtn.click();
+
+    const exportedBlob = await cropPromise;
+    assert.ok(exportedBlob instanceof dom.window.Blob, 'Exported crop must be a Blob instance');
+    assert.equal(exportedBlob.type, 'image/png');
+  } finally {
+    globalThis.window = origWindow;
+    globalThis.document = origDoc;
+    globalThis.Image = origImage;
+    globalThis.URL = origUrl;
+    globalThis.Blob = origBlob;
   }
 });
