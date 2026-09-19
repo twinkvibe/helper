@@ -610,7 +610,6 @@ export function mountArticles(host, { client, userId, username, profile, notice,
       <header class="article-top-bar">
         <div class="article-top-bar__left">
           <button type="button" class="quiet icon-button article-back-btn" title="Ко всем статьям" aria-label="Ко всем статьям">
-            ${icon('back')}
             <span class="article-back-text">Статьи</span>
           </button>
         </div>
@@ -619,7 +618,6 @@ export function mountArticles(host, { client, userId, username, profile, notice,
         </div>
         <div class="article-top-bar__right">
           <button type="button" class="quiet icon-button article-settings-btn" title="Настройки статьи" aria-label="Настройки статьи" aria-haspopup="dialog" aria-expanded="false">
-            ${icon('settings')}
             <span class="article-settings-btn-text">Настройки</span>
           </button>
           <button type="submit" class="primary article-save-btn">Сохранить</button>
@@ -716,6 +714,10 @@ export function mountArticles(host, { client, userId, username, profile, notice,
         </aside>
       </div>
     `;
+
+    // Prepend SVG icons via DOM (not innerHTML) to avoid [object SVGSVGElement]
+    form.querySelector('.article-back-btn').prepend(icon('back'));
+    form.querySelector('.article-settings-btn').prepend(icon('settings'));
 
     // Title input with auto-height and Enter focus jump to body
     const titleInput = form.elements.title;
