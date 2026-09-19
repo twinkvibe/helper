@@ -27,6 +27,7 @@ export function attachEditor(host, {
   imageStore = null,
   variant = 'basic',
   toolbarHost = null,
+  onModeChange = () => {},
 } = {}) {
   let savedMode = getPref('helper:editor:view', 'editor');
   let mode = ['split', 'preview'].includes(savedMode) ? savedMode : 'editor';
@@ -38,15 +39,30 @@ export function attachEditor(host, {
     host.classList.add('article-editor');
   }
 
+  const editorBodyHtml = variant === 'article'
+    ? `
+    <div class="editor ${mode === 'split' ? 'split' : ''}">
+      <div class="editor-pane editor-pane--source" ${mode === 'preview' ? 'hidden' : ''}>
+        <div class="editor-pane-header"><span class="editor-pane-label">Markdown</span></div>
+        <textarea id="${id}" aria-label="Markdown текст" spellcheck="false" placeholder="Начни писать…" ${mode === 'preview' ? 'hidden' : ''}></textarea>
+      </div>
+      <div class="editor-pane editor-pane--preview" ${mode === 'editor' ? 'hidden' : ''}>
+        <div class="editor-pane-header"><span class="editor-pane-label">Preview</span></div>
+        <article class="preview" aria-label="Предпросмотр" ${mode === 'editor' ? 'hidden' : ''}></article>
+      </div>
+    </div>`
+    : `
+    <div class="editor ${mode === 'split' ? 'split' : ''}">
+      <textarea id="${id}" aria-label="Markdown текст" spellcheck="false" placeholder="Начни писать…" ${mode === 'preview' ? 'hidden' : ''}></textarea>
+      <article class="preview" aria-label="Предпросмотр" ${mode === 'editor' ? 'hidden' : ''}></article>
+    </div>`;
+
   host.innerHTML = `
     <div class="format-bar" role="toolbar" aria-label="Форматирование Markdown">
       <div class="format-bar__format"></div>
       <div class="format-bar__view"></div>
     </div>
-    <div class="editor ${mode === 'split' ? 'split' : ''}">
-      <textarea id="${id}" aria-label="Markdown текст" spellcheck="false" placeholder="Начни писать…" ${mode === 'preview' ? 'hidden' : ''}></textarea>
-      <article class="preview" aria-label="Предпросмотр" ${mode === 'editor' ? 'hidden' : ''}></article>
-    </div>
+    ${editorBodyHtml}
     <div class="editor-footer">
       <span class="word-count"></span>
       <span>Ctrl/⌘ B, I, K · Markdown</span>
@@ -55,6 +71,8 @@ export function attachEditor(host, {
 
   const text = host.querySelector('textarea');
   const preview = host.querySelector('.preview');
+  const sourcePane = host.querySelector('.editor-pane--source');
+  const previewPane = host.querySelector('.editor-pane--preview');
   const formatBar = host.querySelector('.format-bar');
   if (toolbarHost) {
     toolbarHost.append(formatBar);
@@ -849,6 +867,8 @@ export function attachEditor(host, {
       editorBox.style.gridTemplateColumns = `minmax(0, ${splitRatio}fr) minmax(0, ${100 - splitRatio}fr)`;
       text.hidden = false;
       preview.hidden = false;
+      if (sourcePane) sourcePane.hidden = false;
+      if (previewPane) previewPane.hidden = false;
       splitControl.hidden = false;
       splitControl.style.display = '';
       splitRange.disabled = false;
@@ -860,6 +880,8 @@ export function attachEditor(host, {
       editorBox.style.gridTemplateColumns = '1fr';
       text.hidden = true;
       preview.hidden = false;
+      if (sourcePane) sourcePane.hidden = true;
+      if (previewPane) previewPane.hidden = false;
       splitControl.hidden = true;
       splitControl.style.display = 'none';
       splitRange.disabled = true;
@@ -871,12 +893,15 @@ export function attachEditor(host, {
       editorBox.style.gridTemplateColumns = '1fr';
       text.hidden = false;
       preview.hidden = true;
+      if (sourcePane) sourcePane.hidden = false;
+      if (previewPane) previewPane.hidden = true;
       splitControl.hidden = true;
       splitControl.style.display = 'none';
       splitRange.disabled = true;
       splitRange.tabIndex = -1;
       formatGroup.hidden = false;
     }
+    onModeChange(mode);
   }
 
   modeSelect.onchange = () => {
@@ -949,5 +974,12 @@ export function attachEditor(host, {
     redo: doRedo,
     insert,
     focus: () => text.focus(),
+    getMode: () => mode,
+    setMode: m => {
+      mode = m;
+      setPref('helper:editor:view', mode);
+      modeSelect.value = mode;
+      applyModeLayout();
+    },
   };
 }

@@ -598,11 +598,6 @@ export function mountArticles(host, { client, userId, username, profile, notice,
   function edit(article) {
     host.replaceChildren();
 
-    const authorDisplayName = profile?.display_name || profile?.username || username || 'Автор';
-    const authorHandle = profile?.username || username || '';
-    const authorAvatarUrl = (profile?.avatar_url && /^https:\/\//i.test(profile.avatar_url)) ? profile.avatar_url : '';
-    const authorInitial = (authorDisplayName || authorHandle || '?').slice(0, 1).toUpperCase();
-
     const form = document.createElement('form');
     form.className = 'article-writer';
 
@@ -627,24 +622,12 @@ export function mountArticles(host, { client, userId, username, profile, notice,
       <div class="article-toolbar-host"></div>
 
       <div class="article-canvas-scroll">
-        <main class="article-document">
-          <header class="article-author-header" aria-label="Информация об авторе">
-            <div class="article-author-avatar">
-              ${authorAvatarUrl
-                ? `<img src="${escapeHtml(authorAvatarUrl)}" alt="" class="article-author-avatar-img" referrerpolicy="no-referrer">`
-                : `<span class="article-author-avatar-initial">${escapeHtml(authorInitial)}</span>`
-              }
-            </div>
-            <div class="article-author-meta">
-              <span class="article-author-name">${escapeHtml(authorDisplayName)}</span>
-              ${authorHandle ? `<span class="article-author-handle">@${escapeHtml(authorHandle)}</span>` : ''}
-            </div>
-          </header>
+        <div class="article-title-editor">
+          <input type="text" name="title" class="article-title-input" maxlength="180" placeholder="Заголовок" required spellcheck="false" autocomplete="off">
+          <h1 class="article-title-preview" hidden></h1>
+        </div>
 
-          <textarea name="title" class="article-title-input" rows="1" maxlength="180" placeholder="Заголовок" required spellcheck="false"></textarea>
-
-          <div class="article-editor"></div>
-        </main>
+        <div class="article-body-editor"></div>
       </div>
 
       <div class="article-settings-backdrop" hidden>
@@ -719,14 +702,11 @@ export function mountArticles(host, { client, userId, username, profile, notice,
     form.querySelector('.article-back-btn').prepend(icon('back'));
     form.querySelector('.article-settings-btn').prepend(icon('settings'));
 
-    // Title input with auto-height and Enter focus jump to body
+    // Title input and preview
     const titleInput = form.elements.title;
+    const titlePreview = form.querySelector('.article-title-preview');
     titleInput.value = article.title || '';
-    const resizeTitle = () => {
-      titleInput.style.height = 'auto';
-      titleInput.style.height = `${titleInput.scrollHeight}px`;
-    };
-    resizeTitle();
+    titlePreview.textContent = (article.title || '').trim() || 'Без заголовка';
 
     const saveStatus = form.querySelector('.article-save-status');
     saveStatus.textContent = 'Сохранено';
@@ -737,7 +717,7 @@ export function mountArticles(host, { client, userId, username, profile, notice,
     };
 
     titleInput.addEventListener('input', () => {
-      resizeTitle();
+      titlePreview.textContent = titleInput.value.trim() || 'Без заголовка';
       markDirty();
     });
     titleInput.addEventListener('keydown', e => {
@@ -904,12 +884,24 @@ export function mountArticles(host, { client, userId, username, profile, notice,
     };
 
     // Editor attachment
-    editor = attachEditor(form.querySelector('.article-editor'), {
+    editor = attachEditor(form.querySelector('.article-body-editor'), {
       toolbarHost: form.querySelector('.article-toolbar-host'),
       value: article.body,
       variant: 'article',
       onChange: () => {
         markDirty();
+      },
+      onModeChange: mode => {
+        form.setAttribute('data-mode', mode);
+        form.classList.toggle('is-split', mode === 'split');
+        if (mode === 'preview') {
+          titleInput.hidden = true;
+          titlePreview.hidden = false;
+          titlePreview.textContent = titleInput.value.trim() || 'Без заголовка';
+        } else {
+          titleInput.hidden = false;
+          titlePreview.hidden = true;
+        }
       },
       onError: m => notice(m, true),
       onImageRequest: ({ insert }) => {

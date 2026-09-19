@@ -35,7 +35,7 @@ function setupDom() {
   return { dom, cleanup };
 }
 
-test('ARTICLE WRITER: focused document canvas layout with top bar, author header, and borderless title', async () => {
+test('ARTICLE WRITER: dedicated title and body containers without author identity in editor', async () => {
   const { dom, cleanup } = setupDom();
   try {
     const mockArticles = [
@@ -93,30 +93,30 @@ test('ARTICLE WRITER: focused document canvas layout with top bar, author header
     assert.ok(saveBtn, 'Save action button must exist');
     assert.equal(saveBtn.textContent.trim(), 'Сохранить', 'Private article must have "Сохранить" as action');
 
-    // Document canvas
-    const documentCol = host.querySelector('.article-document');
-    assert.ok(documentCol, 'Document column must exist');
+    // Author Identity MUST NOT be in the authenticated editor
+    assert.equal(host.querySelector('.article-author-header'), null, 'Author header must NOT exist in editor');
+    assert.equal(host.querySelector('.article-author-avatar'), null, 'Author avatar must NOT exist in editor');
+    assert.equal(host.querySelector('.article-author-name'), null, 'Author name must NOT exist in editor');
+    assert.equal(host.querySelector('.article-author-handle'), null, 'Author handle must NOT exist in editor');
 
-    // Author Identity Header
-    const authorHeader = documentCol.querySelector('.article-author-header');
-    assert.ok(authorHeader, 'Author header must exist above the title');
-    assert.match(authorHeader.querySelector('.article-author-name').textContent, /Писатель/);
-    assert.match(authorHeader.querySelector('.article-author-handle').textContent, /@writer/);
-    const avatarImg = authorHeader.querySelector('.article-author-avatar-img');
-    assert.ok(avatarImg, 'Author avatar img must exist');
-    assert.equal(avatarImg.getAttribute('src'), 'https://example.com/avatar.jpg');
-
-    // Title input
-    const titleInput = documentCol.querySelector('.article-title-input');
-    assert.ok(titleInput, 'Title input must exist');
-    assert.equal(titleInput.tagName.toLowerCase(), 'textarea');
+    // Dedicated Title Container
+    const titleContainer = host.querySelector('.article-title-editor');
+    assert.ok(titleContainer, 'Dedicated title container must exist');
+    const titleInput = titleContainer.querySelector('.article-title-input');
+    assert.ok(titleInput, 'Title input must exist inside title container');
+    assert.equal(titleInput.tagName.toLowerCase(), 'input');
     assert.equal(titleInput.getAttribute('placeholder'), 'Заголовок');
     assert.equal(titleInput.getAttribute('maxlength'), '180');
     assert.equal(titleInput.value, 'Телетайп-вдохновлённый редактор');
+    const titlePreview = titleContainer.querySelector('.article-title-preview');
+    assert.ok(titlePreview, 'Title preview heading must exist in title container');
+    assert.equal(titlePreview.hidden, true, 'Title preview must be hidden in editor mode');
 
-    // Markdown textarea is source of truth (no contenteditable)
-    const bodyTextarea = documentCol.querySelector('.article-editor textarea');
-    assert.ok(bodyTextarea, 'Body textarea must exist');
+    // Dedicated Body Container
+    const bodyContainer = host.querySelector('.article-body-editor');
+    assert.ok(bodyContainer, 'Dedicated body container must exist below title');
+    const bodyTextarea = bodyContainer.querySelector('textarea');
+    assert.ok(bodyTextarea, 'Body textarea must exist inside body container');
     assert.equal(bodyTextarea.value, 'Основной текст статьи.');
     assert.ok(!host.querySelector('[contenteditable="true"]'), 'Must not introduce contenteditable');
   } finally {
@@ -282,11 +282,14 @@ test('ARTICLE WRITER: save/publish action changes dynamically with access level 
   }
 });
 
-test('ARTICLE WRITER: CSS architecture ensures max-width document column and borderless styling', () => {
+test('ARTICLE WRITER: CSS architecture ensures separated title and body containers and split mode panels', () => {
   const workbenchCss = fs.readFileSync(path.resolve(process.cwd(), 'src/workbench.css'), 'utf8');
 
-  // Document column max-width approximately 700-760px
-  assert.match(workbenchCss, /\.article-document\s*\{[^}]*max-width:\s*740px/);
+  // Title container max-width approximately 700-760px
+  assert.match(workbenchCss, /\.article-title-editor\s*\{[^}]*max-width:\s*740px/);
+
+  // Body container max-width approximately 700-760px
+  assert.match(workbenchCss, /\.article-body-editor\s*\{[^}]*max-width:\s*740px/);
 
   // Top article bar sticky
   assert.match(workbenchCss, /\.article-top-bar\s*\{[^}]*position:\s*sticky/);
@@ -303,10 +306,105 @@ test('ARTICLE WRITER: CSS architecture ensures max-width document column and bor
   assert.match(workbenchCss, /\.article-title-input\s*\{[^}]*border:\s*none/);
 
   // Borderless and transparent body textarea
-  assert.match(workbenchCss, /\.article-editor \.editor textarea\s*\{[^}]*background:\s*transparent/);
-  assert.match(workbenchCss, /\.article-editor \.editor textarea\s*\{[^}]*border:\s*none/);
-  assert.match(workbenchCss, /\.article-editor \.editor textarea\s*\{[^}]*resize:\s*none/);
+  assert.match(workbenchCss, /\.article-body-editor \.editor textarea[^{]*\{[^}]*background:\s*transparent/);
+  assert.match(workbenchCss, /\.article-body-editor \.editor textarea[^{]*\{[^}]*border:\s*none/);
+  assert.match(workbenchCss, /\.article-body-editor \.editor textarea[^{]*\{[^}]*resize:\s*none/);
+
+  // Split mode divider and labels
+  assert.match(workbenchCss, /\.article-body-editor \.editor-pane--source\s*\{[^}]*border-right:/);
+  assert.match(workbenchCss, /\.article-body-editor \.editor-pane-label\s*\{/);
 
   // Mobile responsiveness
   assert.match(workbenchCss, /@media\s*\(max-width:\s*768px\)[\s\S]*?\.article-settings-drawer\s*\{[^}]*max-width:\s*100%/);
+});
+
+test('ARTICLE WRITER: editor, split, and preview mode switching with title and body behavior', async () => {
+  const { dom, cleanup } = setupDom();
+  try {
+    const mockArticles = [
+      {
+        id: 'art-400',
+        title: 'Заголовок режима',
+        slug: 'mode-test',
+        body: 'Текст для проверки режимов',
+        access: 'private',
+        published: false,
+        updated_at: '2026-09-19T12:00:00Z',
+      },
+    ];
+
+    const client = {
+      auth: { getSession: async () => ({ data: { session: { user: { id: 'u1' } } } }) },
+      from(table) {
+        if (table === 'articles') {
+          return {
+            select: () => ({ order: async () => ({ data: [...mockArticles], error: null }) }),
+          };
+        }
+        return {};
+      },
+    };
+
+    const host = dom.window.document.querySelector('#articles-root');
+    mountArticles(host, {
+      client,
+      userId: 'u1',
+      username: 'writer',
+      notice: () => {},
+      requireSession: async () => {},
+    });
+
+    await new Promise(r => setTimeout(r, 30));
+
+    const titleInput = host.querySelector('.article-title-input');
+    const titlePreview = host.querySelector('.article-title-preview');
+    const bodyContainer = host.querySelector('.article-body-editor');
+    const textarea = bodyContainer.querySelector('textarea');
+    const preview = bodyContainer.querySelector('.preview');
+    const modeSelect = host.querySelector('.mode-select');
+
+    // 1. Initial EDITOR mode
+    assert.equal(titleInput.hidden, false, 'Title input must be visible in editor mode');
+    assert.equal(titlePreview.hidden, true, 'Title preview must be hidden in editor mode');
+    assert.equal(textarea.hidden, false, 'Textarea must be visible in editor mode');
+    assert.equal(preview.hidden, true, 'Preview must be hidden in editor mode');
+
+    // 2. Switch to SPLIT mode
+    modeSelect.value = 'split';
+    modeSelect.dispatchEvent(new dom.window.Event('change'));
+    assert.equal(titleInput.hidden, false, 'Title input must remain visible above in split mode');
+    assert.equal(titlePreview.hidden, true, 'Title preview must remain hidden in split mode');
+    assert.equal(textarea.hidden, false, 'Textarea must be visible in split mode');
+    assert.equal(preview.hidden, false, 'Preview must be visible in split mode');
+
+    // Split panels check
+    const sourcePane = bodyContainer.querySelector('.editor-pane--source');
+    const previewPane = bodyContainer.querySelector('.editor-pane--preview');
+    assert.ok(sourcePane, 'Source pane must exist in split mode');
+    assert.ok(previewPane, 'Preview pane must exist in split mode');
+    assert.equal(sourcePane.querySelector('.editor-pane-label').textContent, 'Markdown');
+    assert.equal(previewPane.querySelector('.editor-pane-label').textContent, 'Preview');
+    // Title is NOT in split panels
+    assert.equal(sourcePane.querySelector('.article-title-input'), null);
+    assert.equal(previewPane.querySelector('.article-title-input'), null);
+
+    // 3. Switch to PREVIEW mode
+    modeSelect.value = 'preview';
+    modeSelect.dispatchEvent(new dom.window.Event('change'));
+    assert.equal(titleInput.hidden, true, 'Title input must be hidden in preview mode');
+    assert.equal(titlePreview.hidden, false, 'Title preview must be visible in preview mode');
+    assert.equal(titlePreview.textContent, 'Заголовок режима');
+    assert.equal(textarea.hidden, true, 'Textarea must be hidden in preview mode');
+    assert.equal(preview.hidden, false, 'Preview must be visible in preview mode');
+
+    // 4. Switch back to EDITOR mode
+    modeSelect.value = 'editor';
+    modeSelect.dispatchEvent(new dom.window.Event('change'));
+    assert.equal(titleInput.hidden, false);
+    assert.equal(titlePreview.hidden, true);
+    assert.equal(textarea.hidden, false);
+    assert.equal(preview.hidden, true);
+  } finally {
+    cleanup();
+  }
 });
