@@ -26,6 +26,7 @@ export function attachEditor(host, {
   id = 'source',
   imageStore = null,
   variant = 'basic',
+  toolbarHost = null,
 } = {}) {
   let savedMode = getPref('helper:editor:view', 'editor');
   let mode = ['split', 'preview'].includes(savedMode) ? savedMode : 'editor';
@@ -54,8 +55,12 @@ export function attachEditor(host, {
 
   const text = host.querySelector('textarea');
   const preview = host.querySelector('.preview');
-  const formatGroup = host.querySelector('.format-bar__format');
-  const viewGroup = host.querySelector('.format-bar__view');
+  const formatBar = host.querySelector('.format-bar');
+  if (toolbarHost) {
+    toolbarHost.append(formatBar);
+  }
+  const formatGroup = formatBar.querySelector('.format-bar__format');
+  const viewGroup = formatBar.querySelector('.format-bar__view');
   const editorBox = host.querySelector('.editor');
   const wordCount = host.querySelector('.word-count');
 
@@ -593,40 +598,109 @@ export function attachEditor(host, {
   }
 
   if (variant === 'article') {
-    // TEXT STYLE
-    const styleGroup = makeGroup([
-      makeBtn('paragraph', 'Обычный текст (параграф)', () => applyHeading(0)),
-      makeBtn('h1', 'Заголовок 1 (H1)', () => applyHeading(1)),
-      makeBtn('h2', 'Заголовок 2 (H2)', () => applyHeading(2)),
-      makeBtn('h3', 'Заголовок 3 (H3)', () => applyHeading(3)),
-    ]);
+    // Aa DROPDOWN (Text styles, lists, quote, code block)
+    const aaGroup = document.createElement('div');
+    aaGroup.className = 'toolbar-group aa-dropdown-group';
+    aaGroup.style.position = 'relative';
 
-    // INLINE
+    const aaBtn = document.createElement('button');
+    aaBtn.type = 'button';
+    aaBtn.className = 'icon-button aa-dropdown-btn';
+    aaBtn.title = 'Стили текста и блоков (Aa)';
+    aaBtn.setAttribute('aria-label', 'Стили текста и блоков (Aa)');
+    aaBtn.setAttribute('aria-expanded', 'false');
+    aaBtn.setAttribute('aria-haspopup', 'true');
+    aaBtn.innerHTML = '<span class="aa-icon">Aa</span>';
+
+    const aaMenu = document.createElement('div');
+    aaMenu.className = 'aa-menu';
+    aaMenu.hidden = true;
+
+    const closeAa = () => {
+      aaMenu.hidden = true;
+      aaBtn.setAttribute('aria-expanded', 'false');
+    };
+
+    aaBtn.onclick = (e) => {
+      e.stopPropagation();
+      const isHidden = aaMenu.hidden;
+      aaMenu.hidden = !isHidden;
+      aaBtn.setAttribute('aria-expanded', String(!isHidden));
+    };
+
+    document.addEventListener('click', (e) => {
+      if (!aaGroup.contains(e.target)) closeAa();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !aaMenu.hidden) {
+        closeAa();
+        aaBtn.focus();
+      }
+    });
+
+    function makeMenuItem(iconName, labelText, ariaLabel, onClick) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'aa-menu-item';
+      btn.append(icon(iconName));
+      const span = document.createElement('span');
+      span.textContent = labelText;
+      btn.append(span);
+      btn.title = ariaLabel;
+      btn.setAttribute('aria-label', ariaLabel);
+      btn.onmousedown = e => e.preventDefault();
+      btn.onclick = () => {
+        onClick();
+        closeAa();
+      };
+      return btn;
+    }
+
+    const textSection = document.createElement('div');
+    textSection.className = 'aa-menu-section';
+    textSection.append(
+      makeMenuItem('paragraph', 'Обычный текст', 'Обычный текст (параграф)', () => applyHeading(0)),
+      makeMenuItem('h1', 'Заголовок 1', 'Заголовок 1 (H1)', () => applyHeading(1)),
+      makeMenuItem('h2', 'Заголовок 2', 'Заголовок 2 (H2)', () => applyHeading(2)),
+      makeMenuItem('h3', 'Заголовок 3', 'Заголовок 3 (H3)', () => applyHeading(3)),
+    );
+
+    const listSection = document.createElement('div');
+    listSection.className = 'aa-menu-section';
+    listSection.append(
+      makeMenuItem('list', 'Маркированный список', 'Маркированный список', () => applyList('bullet')),
+      makeMenuItem('numberedList', 'Нумерованный список', 'Нумерованный список', () => applyList('numbered')),
+      makeMenuItem('checklist', 'Чеклист', 'Подзадачи / чеклист', () => applyList('check')),
+    );
+
+    const blockSection = document.createElement('div');
+    blockSection.className = 'aa-menu-section';
+    blockSection.append(
+      makeMenuItem('quote', 'Цитата', 'Цитата', () => openQuoteDialog()),
+      makeMenuItem('codeBlock', 'Блок кода', 'Блок кода', () => openCodeBlockDialog()),
+    );
+
+    aaMenu.append(textSection, listSection, blockSection);
+    aaGroup.append(aaBtn, aaMenu);
+
+    // INLINE CONTROLS
     const inlineGroup = makeGroup([
       makeBtn('bold', 'Жирный · Ctrl/⌘ B', () => formatInline('**', '**', 'жирный текст')),
       makeBtn('italic', 'Курсив · Ctrl/⌘ I', () => formatInline('*', '*', 'курсив')),
       makeBtn('strike', 'Зачёркивание', () => formatInline('~~', '~~', 'зачёркнутый текст')),
       makeBtn('code', 'Встроенный код', () => formatInline('`', '`', 'код')),
-    ]);
-
-    // LISTS
-    const listGroup = makeGroup([
-      makeBtn('list', 'Маркированный список', () => applyList('bullet')),
-      makeBtn('numberedList', 'Нумерованный список', () => applyList('numbered')),
-      makeBtn('checklist', 'Подзадачи / чеклист', () => applyList('check')),
-    ]);
-
-    // BLOCKS
-    const blockGroup = makeGroup([
-      makeBtn('quote', 'Цитата', () => openQuoteDialog()),
-      makeBtn('codeBlock', 'Блок кода', () => openCodeBlockDialog()),
-      makeBtn('separator', 'Разделитель (---)', () => insertHorizontalRule()),
-      makeBtn('table', 'Таблица', () => openTableDialog()),
-    ]);
-
-    // INSERT
-    const insertGroup = makeGroup([
       makeBtn('link', 'Ссылка · Ctrl/⌘ K', () => openLinkDialog()),
+    ]);
+
+    // BLOCKS (Table, Horizontal rule)
+    const blockGroup = makeGroup([
+      makeBtn('table', 'Таблица', () => openTableDialog()),
+      makeBtn('separator', 'Разделитель (---)', () => insertHorizontalRule()),
+    ]);
+
+    // MEDIA
+    const mediaGroup = makeGroup([
       makeBtn('image', 'Изображение', () => {
         if (onImageRequest) {
           onImageRequest({ insert });
@@ -642,7 +716,7 @@ export function attachEditor(host, {
       makeBtn('redo', 'Повторить · Ctrl/⌘ Shift+Z', doRedo),
     ]);
 
-    formatGroup.append(styleGroup, inlineGroup, listGroup, blockGroup, insertGroup, historyGroup);
+    formatGroup.append(aaGroup, inlineGroup, blockGroup, mediaGroup, historyGroup);
   } else {
     // Basic variant (compact toolbar for tasks & notes)
     const styleSelect = document.createElement('select');
@@ -874,5 +948,6 @@ export function attachEditor(host, {
     undo: doUndo,
     redo: doRedo,
     insert,
+    focus: () => text.focus(),
   };
 }

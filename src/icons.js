@@ -4,10 +4,12 @@ import {
   RefreshCw, CalendarDays, MoreHorizontal, Download, Upload, Trash2,
   FileText, CheckSquare, Settings, Users, LogOut, Newspaper, History,
   Menu, X, RotateCcw, RotateCw, ListOrdered, Table, Minus, Undo2, Redo2, Pilcrow,
-  createElement,
+  ArrowLeft, createElement,
 } from 'lucide';
 
 const icons = {
+  back: ArrowLeft,
+  arrowLeft: ArrowLeft,
   bold: Bold,
   italic: Italic,
   strike: Strikethrough,

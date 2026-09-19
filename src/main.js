@@ -375,7 +375,7 @@ function markdown() {
 }
 
 function articles() {
-  cleanupView = mountArticles($('view'), { client, userId: user.id, username: profile.username, notice, requireSession });
+  cleanupView = mountArticles($('view'), { client, userId: user.id, username: profile.username, profile, notice, requireSession });
 }
 
 async function logs() {

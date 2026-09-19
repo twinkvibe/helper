@@ -396,7 +396,7 @@ function openArticleImageDialog({ uploadMedia, insert, notice }) {
   };
 }
 
-export function mountArticles(host, { client, userId, username, notice, requireSession }) {
+export function mountArticles(host, { client, userId, username, profile, notice, requireSession }) {
   let articles = [], selected = null, editor = null, alive = true;
 
   const uploadMedia = async (file, originalName) => {
@@ -498,6 +498,14 @@ export function mountArticles(host, { client, userId, username, notice, requireS
       .order('updated_at', { ascending: false });
     if (error) throw new Error('Не удалось загрузить статьи. Проверь подключение.');
     articles = data || [];
+    if (selected === null && articles.length > 0) {
+      selected = articles[0].id;
+    }
+    render();
+  };
+
+  const showOverview = () => {
+    selected = null;
     render();
   };
 
@@ -505,18 +513,29 @@ export function mountArticles(host, { client, userId, username, notice, requireS
     if (!alive) return;
     host.replaceChildren();
 
+    if (selected) {
+      const art = articles.find(x => x.id === selected);
+      if (art) {
+        edit(art);
+        return;
+      }
+    }
+
+    const overview = document.createElement('div');
+    overview.className = 'articles-overview';
+
     const heading = document.createElement('div');
     heading.className = 'work-heading';
     heading.append(Object.assign(document.createElement('h1'), { textContent: 'Публикации' }));
 
     const create = document.createElement('button');
-    create.className = 'primary';
+    create.className = 'primary new-article-btn';
     create.textContent = 'Новая статья';
     create.prepend(icon('plus'));
     create.onclick = () => {
       const item = {
         id: null,
-        title: 'Без названия',
+        title: '',
         slug: `${slugify('bez-nazvaniya')}-${Math.random().toString(36).slice(2, 7)}`,
         body: '',
         excerpt: '',
@@ -529,243 +548,425 @@ export function mountArticles(host, { client, userId, username, notice, requireS
       edit(item);
     };
     heading.append(create);
-    host.append(heading);
+    overview.append(heading);
 
-    const layout = document.createElement('div');
-    layout.className = 'articles-layout';
-    const list = document.createElement('aside');
-    list.className = 'article-list';
-    const pane = document.createElement('section');
-    pane.className = 'article-pane';
-    layout.append(list, pane);
-    host.append(layout);
-
-    const add = article => {
-      const b = document.createElement('button');
-      b.className = `article-list-item ${article.id === selected ? 'selected' : ''}`;
-      b.innerHTML = `<strong></strong><small>${
-        article.access === 'public' ? 'Общедоступно' : article.access === 'unlisted' ? 'По ссылке' : 'Приватно'
-      }</small>`;
-      b.querySelector('strong').textContent = article.title;
-      b.onclick = () => {
-        selected = article.id;
-        edit(article);
-      };
-      list.append(b);
-    };
-
-    articles.filter(x => x.id).forEach(add);
-    if (!articles.some(x => x.id === selected)) {
-      if (articles[0]?.id) {
-        selected = articles[0].id;
-        edit(articles[0]);
-      } else {
-        pane.innerHTML = '<p class="empty">Создай статью: она будет черновиком, пока ты не опубликуешь её.</p>';
-      }
+    if (articles.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'empty';
+      empty.textContent = 'Создай статью: она будет черновиком, пока ты не опубликуешь её.';
+      overview.append(empty);
+    } else {
+      const grid = document.createElement('div');
+      grid.className = 'articles-cards-grid';
+      articles.filter(x => x.id).forEach(art => {
+        const card = document.createElement('div');
+        card.className = 'article-overview-card';
+        card.tabIndex = 0;
+        card.setAttribute('role', 'button');
+        card.innerHTML = `
+          <div class="article-overview-card__header">
+            <h3 class="article-overview-card__title"></h3>
+            <span class="article-access-badge badge-${escapeHtml(art.access || 'private')}">${
+              art.access === 'public' ? 'Общедоступно' : art.access === 'unlisted' ? 'По ссылке' : 'Приватно'
+            }</span>
+          </div>
+          ${art.excerpt ? `<p class="article-overview-card__excerpt">${escapeHtml(art.excerpt)}</p>` : ''}
+          <div class="article-overview-card__footer">
+            <time class="muted">${art.updated_at ? date(art.updated_at) : 'Черновик'}</time>
+          </div>
+        `;
+        card.querySelector('.article-overview-card__title').textContent = art.title || 'Без названия';
+        card.onclick = () => {
+          selected = art.id;
+          edit(art);
+        };
+        card.onkeydown = e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            selected = art.id;
+            edit(art);
+          }
+        };
+        grid.append(card);
+      });
+      overview.append(grid);
     }
 
-    function edit(article) {
-      pane.replaceChildren();
-      const form = document.createElement('form');
-      form.className = 'article-form';
-      form.innerHTML = `
-        <label>Заголовок<input name="title" maxlength="180" required></label>
-        <div class="article-fields">
-          <div class="article-meta-col">
-            <label>Адрес статьи<input name="slug" maxlength="80" pattern="[a-z0-9а-яё-]+" required></label>
-            <label>Доступ
-              <select name="access">
-                <option value="private">Приватно</option>
+    host.append(overview);
+  };
+
+  function edit(article) {
+    host.replaceChildren();
+
+    const authorDisplayName = profile?.display_name || profile?.username || username || 'Автор';
+    const authorHandle = profile?.username || username || '';
+    const authorAvatarUrl = (profile?.avatar_url && /^https:\/\//i.test(profile.avatar_url)) ? profile.avatar_url : '';
+    const authorInitial = (authorDisplayName || authorHandle || '?').slice(0, 1).toUpperCase();
+
+    const form = document.createElement('form');
+    form.className = 'article-writer';
+
+    form.innerHTML = `
+      <header class="article-top-bar">
+        <div class="article-top-bar__left">
+          <button type="button" class="quiet icon-button article-back-btn" title="Ко всем статьям" aria-label="Ко всем статьям">
+            ${icon('back')}
+            <span class="article-back-text">Статьи</span>
+          </button>
+        </div>
+        <div class="article-top-bar__center">
+          <div class="article-save-status notice" role="status" aria-live="polite">Сохранено</div>
+        </div>
+        <div class="article-top-bar__right">
+          <button type="button" class="quiet icon-button article-settings-btn" title="Настройки статьи" aria-label="Настройки статьи" aria-haspopup="dialog" aria-expanded="false">
+            ${icon('settings')}
+            <span class="article-settings-btn-text">Настройки</span>
+          </button>
+          <button type="submit" class="primary article-save-btn">Сохранить</button>
+        </div>
+      </header>
+
+      <div class="article-toolbar-host"></div>
+
+      <div class="article-canvas-scroll">
+        <main class="article-document">
+          <header class="article-author-header" aria-label="Информация об авторе">
+            <div class="article-author-avatar">
+              ${authorAvatarUrl
+                ? `<img src="${escapeHtml(authorAvatarUrl)}" alt="" class="article-author-avatar-img" referrerpolicy="no-referrer">`
+                : `<span class="article-author-avatar-initial">${escapeHtml(authorInitial)}</span>`
+              }
+            </div>
+            <div class="article-author-meta">
+              <span class="article-author-name">${escapeHtml(authorDisplayName)}</span>
+              ${authorHandle ? `<span class="article-author-handle">@${escapeHtml(authorHandle)}</span>` : ''}
+            </div>
+          </header>
+
+          <textarea name="title" class="article-title-input" rows="1" maxlength="180" placeholder="Заголовок" required spellcheck="false"></textarea>
+
+          <div class="article-editor"></div>
+        </main>
+      </div>
+
+      <div class="article-settings-backdrop" hidden>
+        <aside class="article-settings-drawer" role="dialog" aria-label="Настройки статьи" aria-modal="true">
+          <div class="article-settings-header">
+            <h3>Настройки статьи</h3>
+            <button type="button" class="quiet icon-button close-settings-btn" aria-label="Закрыть настройки">✕</button>
+          </div>
+          <div class="article-settings-body">
+            <label class="drawer-field">
+              <span class="drawer-field-title">Адрес статьи (slug)</span>
+              <input name="slug" maxlength="80" pattern="[a-z0-9а-яё-]+" required class="drawer-input">
+              <small class="drawer-slug-preview muted"></small>
+            </label>
+
+            <label class="drawer-field">
+              <span class="drawer-field-title">Доступ</span>
+              <select name="access" class="drawer-select">
+                <option value="private">Приватно (черновик)</option>
                 <option value="unlisted">Только по ссылке</option>
                 <option value="public">Общедоступно</option>
               </select>
             </label>
-          </div>
-          <div class="cover-picker-container">
-            <span class="field-label" style="font-size: 13px; font-weight: 550; display: block; margin-bottom: 6px;">Обложка</span>
-            <div class="cover-picker">
-              <div class="cover-picker__tabs">
-                <button type="button" class="tab-btn active" data-cover-tab="upload">Загрузить</button>
-                <button type="button" class="tab-btn" data-cover-tab="url">По ссылке</button>
-              </div>
-              <div class="cover-picker__panel cover-upload-panel">
-                <button type="button" class="secondary select-cover-btn">Выбрать изображение</button>
-                <input type="file" class="cover-file-hidden" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-                <small class="cover-upload-status muted"></small>
-              </div>
-              <div class="cover-picker__panel cover-url-panel" style="display: none;">
-                <div class="cover-url-row">
-                  <input type="url" class="cover-url-field" placeholder="https://example.com/cover.jpg">
-                  <button type="button" class="secondary apply-cover-url-btn">Применить</button>
+
+            <div class="drawer-field">
+              <span class="drawer-field-title">Обложка</span>
+              <div class="cover-picker">
+                <div class="cover-picker__tabs">
+                  <button type="button" class="tab-btn active" data-cover-tab="upload">Загрузить</button>
+                  <button type="button" class="tab-btn" data-cover-tab="url">По ссылке</button>
+                </div>
+                <div class="cover-picker__panel cover-upload-panel">
+                  <button type="button" class="secondary select-cover-btn">Выбрать изображение</button>
+                  <input type="file" class="cover-file-hidden" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+                  <small class="cover-upload-status muted"></small>
+                </div>
+                <div class="cover-picker__panel cover-url-panel" style="display: none;">
+                  <div class="cover-url-row">
+                    <input type="url" class="cover-url-field" placeholder="https://example.com/cover.jpg">
+                    <button type="button" class="secondary apply-cover-url-btn">Применить</button>
+                  </div>
+                </div>
+                <div class="cover-preview-box" ${article.cover_url ? '' : 'hidden'}>
+                  <img class="cover-preview-img" src="${escapeHtml(article.cover_url || '')}" alt="Обложка">
+                  <div class="cover-preview-actions">
+                    <button type="button" class="quiet change-cover-btn">Изменить</button>
+                    <button type="button" class="danger quiet remove-cover-btn">Удалить</button>
+                  </div>
                 </div>
               </div>
-              <div class="cover-preview-box" ${article.cover_url ? '' : 'hidden'}>
-                <img class="cover-preview-img" src="${escapeHtml(article.cover_url || '')}" alt="Обложка">
-                <div class="cover-preview-actions">
-                  <button type="button" class="quiet change-cover-btn">Изменить</button>
-                  <button type="button" class="danger quiet remove-cover-btn">Удалить</button>
-                </div>
-              </div>
+              <input type="hidden" name="cover" value="${escapeHtml(article.cover_url || '')}">
             </div>
-            <input type="hidden" name="cover" value="${escapeHtml(article.cover_url || '')}">
+
+            <div class="drawer-field">
+              <span class="drawer-field-title">Публичная ссылка</span>
+              <button type="button" class="secondary w-full copy-link-btn" data-copy>Скопировать ссылку</button>
+            </div>
+
+            <div class="drawer-field drawer-danger-zone">
+              <span class="drawer-field-title">Опасная зона</span>
+              <button class="danger quiet delete-article-btn" type="button">Удалить статью</button>
+            </div>
           </div>
-        </div>
-        <div class="article-editor"></div>
-        <div class="article-actions" style="display: flex; justify-content: space-between; align-items: center;">
-          <div class="article-actions__left">
-            <button class="danger quiet delete-article-btn" type="button">Удалить статью</button>
+          <div class="article-settings-footer">
+            <button type="button" class="primary close-settings-done-btn">Готово</button>
           </div>
-          <div class="article-actions__right" style="display: flex; gap: 8px;">
-            <button class="quiet" type="button" data-copy>Скопировать ссылку</button>
-            <button class="primary" type="submit">Сохранить</button>
-          </div>
-        </div>
-        <p class="notice" role="status"></p>
-      `;
+        </aside>
+      </div>
+    `;
 
-      form.elements.title.value = article.title;
-      form.elements.slug.value = article.slug;
-      form.elements.access.value = article.access || (article.published ? 'public' : 'private');
+    // Title input with auto-height and Enter focus jump to body
+    const titleInput = form.elements.title;
+    titleInput.value = article.title || '';
+    const resizeTitle = () => {
+      titleInput.style.height = 'auto';
+      titleInput.style.height = `${titleInput.scrollHeight}px`;
+    };
+    resizeTitle();
 
-      // Cover Picker wiring
-      const coverInput = form.elements.cover;
-      const coverPreviewBox = form.querySelector('.cover-preview-box');
-      const coverPreviewImg = form.querySelector('.cover-preview-img');
-      const coverTabUpload = form.querySelector('[data-cover-tab="upload"]');
-      const coverTabUrl = form.querySelector('[data-cover-tab="url"]');
-      const coverUploadPanel = form.querySelector('.cover-upload-panel');
-      const coverUrlPanel = form.querySelector('.cover-url-panel');
-      const selectCoverBtn = form.querySelector('.select-cover-btn');
-      const coverFileHidden = form.querySelector('.cover-file-hidden');
-      const coverUploadStatus = form.querySelector('.cover-upload-status');
-      const coverUrlField = form.querySelector('.cover-url-field');
-      const applyCoverUrlBtn = form.querySelector('.apply-cover-url-btn');
-      const removeCoverBtn = form.querySelector('.remove-cover-btn');
-      const changeCoverBtn = form.querySelector('.change-cover-btn');
+    const saveStatus = form.querySelector('.article-save-status');
+    saveStatus.textContent = 'Сохранено';
+    const markDirty = () => {
+      saveStatus.textContent = 'Есть изменения';
+      saveStatus.classList.add('is-dirty');
+      saveStatus.classList.remove('error');
+    };
 
-      const setCoverTab = mode => {
-        if (mode === 'upload') {
-          coverTabUpload.classList.add('active');
-          coverTabUrl.classList.remove('active');
-          coverUploadPanel.style.display = 'flex';
-          coverUrlPanel.style.display = 'none';
-        } else {
-          coverTabUrl.classList.add('active');
-          coverTabUpload.classList.remove('active');
-          coverUrlPanel.style.display = 'flex';
-          coverUploadPanel.style.display = 'none';
-        }
-      };
-      coverTabUpload.onclick = () => setCoverTab('upload');
-      coverTabUrl.onclick = () => setCoverTab('url');
+    titleInput.addEventListener('input', () => {
+      resizeTitle();
+      markDirty();
+    });
+    titleInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        editor?.focus();
+      }
+    });
 
-      selectCoverBtn.onclick = () => coverFileHidden.click();
-      coverFileHidden.onchange = async () => {
-        const file = coverFileHidden.files[0];
-        if (!file) return;
-        try {
-          validateImageFile(file);
-          coverUploadStatus.textContent = 'Кадрирование…';
-          const croppedBlob = await editImage(file, {
-            aspectRatio: 16 / 9,
-            outputWidth: 1600,
-            outputHeight: 900,
-            cropShape: 'rect',
-            title: 'Обложка статьи (16:9)',
-          });
-          if (!croppedBlob) {
-            coverUploadStatus.textContent = '';
-            return;
-          }
-          coverUploadStatus.textContent = 'Загрузка…';
-          const url = await uploadMedia(croppedBlob, file.name);
-          coverInput.value = url;
-          coverPreviewImg.src = url;
-          coverPreviewBox.hidden = false;
-          coverUploadStatus.textContent = 'Обложка установлена.';
-        } catch (err) {
-          coverUploadStatus.textContent = err.message || 'Ошибка загрузки';
-          notice(err.message || 'Ошибка загрузки', true);
-        } finally {
-          coverFileHidden.value = '';
-        }
-      };
+    // Slug & live preview
+    const slugInput = form.elements.slug;
+    slugInput.value = article.slug || '';
+    const slugPreview = form.querySelector('.drawer-slug-preview');
+    const base = (import.meta.env?.BASE_URL || '/').replace(/\/+$/, '') + '/';
+    const updateSlugPreview = () => {
+      const s = slugify(slugInput.value.trim());
+      slugPreview.textContent = `${base}${articleHash(s)}`;
+    };
+    updateSlugPreview();
+    slugInput.addEventListener('input', () => {
+      updateSlugPreview();
+      markDirty();
+    });
 
-      applyCoverUrlBtn.onclick = () => {
-        const url = coverUrlField.value.trim();
-        if (!/^https:\/\//i.test(url)) {
-          notice('Укажите корректный HTTPS URL для обложки', true);
+    // Access selector & Save button text
+    const accessSelect = form.elements.access;
+    accessSelect.value = article.access || (article.published ? 'public' : 'private');
+    const saveBtn = form.querySelector('.article-save-btn');
+    const updateSaveBtnText = () => {
+      const val = accessSelect.value;
+      saveBtn.textContent = (val === 'unlisted' || val === 'public') ? 'Сохранить изменения' : 'Сохранить';
+    };
+    updateSaveBtnText();
+    accessSelect.addEventListener('change', () => {
+      updateSaveBtnText();
+      markDirty();
+    });
+
+    // Settings Drawer controls
+    const settingsBackdrop = form.querySelector('.article-settings-backdrop');
+    const settingsBtn = form.querySelector('.article-settings-btn');
+    const closeSettingsBtn = form.querySelector('.close-settings-btn');
+    const doneSettingsBtn = form.querySelector('.close-settings-done-btn');
+
+    const openSettings = () => {
+      settingsBackdrop.hidden = false;
+      settingsBtn.setAttribute('aria-expanded', 'true');
+      slugInput.focus();
+    };
+    const closeSettings = () => {
+      settingsBackdrop.hidden = true;
+      settingsBtn.setAttribute('aria-expanded', 'false');
+      editor?.focus();
+    };
+
+    settingsBtn.onclick = openSettings;
+    closeSettingsBtn.onclick = closeSettings;
+    doneSettingsBtn.onclick = closeSettings;
+    settingsBackdrop.onclick = e => {
+      if (e.target === settingsBackdrop) closeSettings();
+    };
+
+    const onKeydownBackdrop = e => {
+      if (!form.isConnected) {
+        document.removeEventListener('keydown', onKeydownBackdrop);
+        return;
+      }
+      if (e.key === 'Escape' && !settingsBackdrop.hidden) {
+        closeSettings();
+      }
+    };
+    document.addEventListener('keydown', onKeydownBackdrop);
+
+    // Cover Picker wiring
+    const coverInput = form.elements.cover;
+    const coverPreviewBox = form.querySelector('.cover-preview-box');
+    const coverPreviewImg = form.querySelector('.cover-preview-img');
+    const coverTabUpload = form.querySelector('[data-cover-tab="upload"]');
+    const coverTabUrl = form.querySelector('[data-cover-tab="url"]');
+    const coverUploadPanel = form.querySelector('.cover-upload-panel');
+    const coverUrlPanel = form.querySelector('.cover-url-panel');
+    const selectCoverBtn = form.querySelector('.select-cover-btn');
+    const coverFileHidden = form.querySelector('.cover-file-hidden');
+    const coverUploadStatus = form.querySelector('.cover-upload-status');
+    const coverUrlField = form.querySelector('.cover-url-field');
+    const applyCoverUrlBtn = form.querySelector('.apply-cover-url-btn');
+    const removeCoverBtn = form.querySelector('.remove-cover-btn');
+    const changeCoverBtn = form.querySelector('.change-cover-btn');
+
+    const setCoverTab = mode => {
+      if (mode === 'upload') {
+        coverTabUpload.classList.add('active');
+        coverTabUrl.classList.remove('active');
+        coverUploadPanel.style.display = 'flex';
+        coverUrlPanel.style.display = 'none';
+      } else {
+        coverTabUrl.classList.add('active');
+        coverTabUpload.classList.remove('active');
+        coverUrlPanel.style.display = 'flex';
+        coverUploadPanel.style.display = 'none';
+      }
+    };
+    coverTabUpload.onclick = () => setCoverTab('upload');
+    coverTabUrl.onclick = () => setCoverTab('url');
+
+    selectCoverBtn.onclick = () => coverFileHidden.click();
+    coverFileHidden.onchange = async () => {
+      const file = coverFileHidden.files[0];
+      if (!file) return;
+      try {
+        validateImageFile(file);
+        coverUploadStatus.textContent = 'Кадрирование…';
+        const croppedBlob = await editImage(file, {
+          aspectRatio: 16 / 9,
+          outputWidth: 1600,
+          outputHeight: 900,
+          cropShape: 'rect',
+          title: 'Обложка статьи (16:9)',
+        });
+        if (!croppedBlob) {
+          coverUploadStatus.textContent = '';
           return;
         }
+        coverUploadStatus.textContent = 'Загрузка…';
+        const url = await uploadMedia(croppedBlob, file.name);
         coverInput.value = url;
         coverPreviewImg.src = url;
         coverPreviewBox.hidden = false;
-        notice('Обложка по ссылке установлена.');
-      };
+        coverUploadStatus.textContent = 'Обложка установлена.';
+        markDirty();
+      } catch (err) {
+        coverUploadStatus.textContent = err.message || 'Ошибка загрузки';
+        notice(err.message || 'Ошибка загрузки', true);
+      } finally {
+        coverFileHidden.value = '';
+      }
+    };
 
-      removeCoverBtn.onclick = () => {
-        coverInput.value = '';
-        coverPreviewImg.src = '';
-        coverPreviewBox.hidden = true;
-        coverUrlField.value = '';
-        coverUploadStatus.textContent = '';
-      };
+    applyCoverUrlBtn.onclick = () => {
+      const url = coverUrlField.value.trim();
+      if (!/^https:\/\//i.test(url)) {
+        notice('Укажите корректный HTTPS URL для обложки', true);
+        return;
+      }
+      coverInput.value = url;
+      coverPreviewImg.src = url;
+      coverPreviewBox.hidden = false;
+      notice('Обложка по ссылке установлена.');
+      markDirty();
+    };
 
-      changeCoverBtn.onclick = () => {
-        setCoverTab('upload');
-        selectCoverBtn.click();
-      };
+    removeCoverBtn.onclick = () => {
+      coverInput.value = '';
+      coverPreviewImg.src = '';
+      coverPreviewBox.hidden = true;
+      coverUrlField.value = '';
+      coverUploadStatus.textContent = '';
+      markDirty();
+    };
 
-      // Editor with onImageRequest
-      editor = attachEditor(form.querySelector('.article-editor'), {
-        value: article.body,
-        variant: 'article',
-        onError: m => notice(m, true),
-        onImageRequest: ({ insert }) => {
-          openArticleImageDialog({ uploadMedia, insert, notice });
-        },
-      });
+    changeCoverBtn.onclick = () => {
+      setCoverTab('upload');
+      selectCoverBtn.click();
+    };
 
-      // Copy link
-      form.querySelector('[data-copy]').onclick = () => {
-        const base = (import.meta.env?.BASE_URL || '/').replace(/\/+$/, '') + '/';
-        const fullUrl = new URL(`${base}${articleHash(form.elements.slug.value.trim())}`, location.href).href;
-        copy(fullUrl);
-      };
+    // Editor attachment
+    editor = attachEditor(form.querySelector('.article-editor'), {
+      toolbarHost: form.querySelector('.article-toolbar-host'),
+      value: article.body,
+      variant: 'article',
+      onChange: () => {
+        markDirty();
+      },
+      onError: m => notice(m, true),
+      onImageRequest: ({ insert }) => {
+        openArticleImageDialog({ uploadMedia, insert, notice });
+      },
+    });
 
-      // Delete article
-      form.querySelector('.delete-article-btn').onclick = () => {
-        deleteArticle(article);
-      };
+    // Back to overview
+    form.querySelector('.article-back-btn').onclick = () => {
+      showOverview();
+    };
 
-      // Save article
-      form.onsubmit = async event => {
-        event.preventDefault();
-        const button = form.querySelector('[type=submit]');
-        button.disabled = true;
-        const status = form.querySelector('.notice');
-        status.className = 'notice';
-        status.textContent = 'Сохраняем…';
-        try {
-          article.title = form.elements.title.value;
-          article.slug = slugify(form.elements.slug.value);
-          article.cover_url = coverInput.value;
-          article.access = form.elements.access.value;
-          article.body = editor.getValue();
-          await save(article);
-          notice(article.access === 'private' ? 'Приватная статья сохранена.' : 'Статья сохранена.');
-          status.textContent = 'Сохранено.';
-        } catch (error) {
-          status.textContent = error?.message || 'Не удалось сохранить статью.';
-          status.classList.add('error');
-        } finally {
-          button.disabled = false;
-        }
-      };
+    // Copy public link
+    form.querySelector('[data-copy]').onclick = () => {
+      const fullUrl = new URL(`${base}${articleHash(form.elements.slug.value.trim())}`, location.href).href;
+      copy(fullUrl);
+    };
 
-      pane.append(form);
-    }
-  };
+    // Delete article
+    form.querySelector('.delete-article-btn').onclick = () => {
+      deleteArticle(article);
+    };
+
+    // Save article
+    form.onsubmit = async event => {
+      event.preventDefault();
+      saveBtn.disabled = true;
+      saveStatus.className = 'article-save-status notice';
+      saveStatus.textContent = 'Сохраняем…';
+      try {
+        article.title = form.elements.title.value;
+        article.slug = slugify(form.elements.slug.value);
+        article.cover_url = coverInput.value;
+        article.access = form.elements.access.value;
+        article.body = editor.getValue();
+        await save(article);
+        notice(article.access === 'private' ? 'Приватная статья сохранена.' : 'Статья сохранена.');
+        saveStatus.textContent = 'Сохранено';
+        saveStatus.classList.remove('is-dirty', 'error');
+        updateSaveBtnText();
+      } catch (error) {
+        saveStatus.textContent = error?.message || 'Не удалось сохранить статью.';
+        saveStatus.classList.add('error');
+        notice(error?.message || 'Не удалось сохранить статью.', true);
+      } finally {
+        saveBtn.disabled = false;
+      }
+    };
+
+    // Shortcut Ctrl+S / Cmd+S
+    form.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    host.append(form);
+  }
 
   refresh().catch(error => {
     host.textContent = error.message;
