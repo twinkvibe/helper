@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { JSDOM } from 'jsdom';
 import { renderMarkdown, sessionStorageAdapter } from '../src/security.js';
 import { publicArticleSlug, articleHash } from '../src/articles.js';
@@ -46,4 +48,18 @@ test('Remember me controls persistence, logout removes tokens but preserves note
  store.setRemember(true);assert.equal(s.getItem('helper:auth'),null);store.setItem('helper:auth','persistent');assert.equal(l.getItem('helper:auth'),'persistent');
  const reload=sessionStorageAdapter(l,s);assert.equal(reload.getItem('helper:auth'),'persistent');
  reload.removeItem('helper:auth');assert.equal(reload.getItem('helper:auth'),null);assert.equal(l.getItem('helper:markdown:user'),'private note');
+});
+test('Content Security Policy in index.html allows blob: in img-src for local image editing', () => {
+  const html = fs.readFileSync(path.resolve('index.html'), 'utf-8');
+  const dom = new JSDOM(html);
+  const meta = dom.window.document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  assert.ok(meta, 'index.html must define Content-Security-Policy meta tag');
+  const csp = meta.getAttribute('content') || '';
+  const imgSrcMatch = csp.match(/img-src\s+([^;]+)/i);
+  assert.ok(imgSrcMatch, 'CSP must contain img-src directive');
+  const imgSrcDirectives = imgSrcMatch[1].split(/\s+/).filter(Boolean);
+  assert.ok(imgSrcDirectives.includes("'self'"), "img-src must allow 'self'");
+  assert.ok(imgSrcDirectives.includes('https:'), 'img-src must allow https:');
+  assert.ok(imgSrcDirectives.includes('data:'), 'img-src must allow data:');
+  assert.ok(imgSrcDirectives.includes('blob:'), 'img-src must allow blob: for URL.createObjectURL');
 });
