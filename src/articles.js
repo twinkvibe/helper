@@ -135,14 +135,6 @@ export async function renderPublicArticle(host, client, slug) {
   `;
 
   host.querySelector('.article-body').innerHTML = renderMarkdown(data.body);
-  host.querySelectorAll('.article-body pre > code[class*="language-"]').forEach(code => {
-    const language = code.className.match(/(?:^|\s)language-([\w+-]+)/)?.[1];
-    if (!language) return;
-    const label = document.createElement('span');
-    label.className = 'code-language';
-    label.textContent = language;
-    code.parentElement.prepend(label);
-  });
   host.querySelectorAll('.article-body input[type="checkbox"]').forEach(input => {
     input.disabled = true;
     input.setAttribute('aria-disabled', 'true');
@@ -727,6 +719,7 @@ export function mountArticles(host, { client, userId, username, notice, requireS
       // Editor with onImageRequest
       editor = attachEditor(form.querySelector('.article-editor'), {
         value: article.body,
+        variant: 'article',
         onError: m => notice(m, true),
         onImageRequest: ({ insert }) => {
           openArticleImageDialog({ uploadMedia, insert, notice });

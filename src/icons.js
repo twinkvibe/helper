@@ -3,7 +3,8 @@ import {
   Quote, Image, Heading1, Heading2, Heading3, ImagePlus, Search, Plus,
   RefreshCw, CalendarDays, MoreHorizontal, Download, Upload, Trash2,
   FileText, CheckSquare, Settings, Users, LogOut, Newspaper, History,
-  Menu, X, RotateCcw, RotateCw, createElement,
+  Menu, X, RotateCcw, RotateCw, ListOrdered, Table, Minus, Undo2, Redo2, Pilcrow,
+  createElement,
 } from 'lucide';
 
 const icons = {
@@ -11,6 +12,7 @@ const icons = {
   italic: Italic,
   strike: Strikethrough,
   list: List,
+  numberedList: ListOrdered,
   checklist: ListChecks,
   link: Link,
   code: Code,
@@ -18,6 +20,12 @@ const icons = {
   quote: Quote,
   image: Image,
   imagePlus: ImagePlus,
+  table: Table,
+  separator: Minus,
+  undo: Undo2,
+  redo: Redo2,
+  pilcrow: Pilcrow,
+  paragraph: Pilcrow,
   h1: Heading1,
   h2: Heading2,
   h3: Heading3,

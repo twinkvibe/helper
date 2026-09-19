@@ -505,6 +505,8 @@
   margin-top: 14px;
   padding: 6px 10px;
   overflow: visible;
+  max-width: 100%;
+  box-sizing: border-box;
   border: 1px solid var(--line);
   border-bottom: 0;
   border-radius: 8px 8px 0 0;
@@ -713,6 +715,7 @@
 }
 
 .preview pre {
+  position: relative;
   overflow: hidden;
   overflow-wrap: anywhere;
   padding: 16px;
@@ -721,6 +724,11 @@
   background: #172019;
   color: #e0eadc;
   white-space: pre-wrap;
+}
+
+.preview pre:has(.code-language),
+.preview pre.has-code-language {
+  padding-top: 32px;
 }
 
 .preview pre code {
@@ -735,6 +743,24 @@
   padding-left: 16px;
   border-left: 3px solid #91b34e;
   color: #b4c2b4;
+  font-family: inherit;
+}
+
+.preview blockquote > p {
+  margin: 0;
+}
+
+.preview blockquote > p + p {
+  margin-top: .75em;
+}
+
+.preview blockquote .quote-author {
+  display: block;
+  margin-top: .85em;
+  color: var(--dim, #8ca388);
+  font-family: inherit;
+  font-size: .82em;
+  font-style: normal;
 }
 
 .preview ul,
@@ -1075,4 +1101,248 @@
   .editor-footer span:last-child {
     display: none;
   }
+}
+
+/* Article Editor toolbar groups */
+.toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 2px 4px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.toolbar-group .icon-button {
+  width: 30px;
+  height: 30px;
+  padding: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+/* Article Editor scoped preview typography */
+.article-editor .preview {
+  font-size: 18px;
+  line-height: 1.58;
+  color: var(--paper-ink, #e0eadc);
+  background: var(--paper, #151b18);
+  padding: 20px clamp(16px, 3vw, 36px) 40px;
+  overflow-wrap: anywhere;
+}
+
+.article-editor .preview h1,
+.article-editor .preview h2,
+.article-editor .preview h3 {
+  margin-top: .65em;
+  margin-bottom: .3em;
+  line-height: 1.18;
+}
+
+.article-editor .preview > :first-child {
+  margin-top: 0;
+}
+
+.article-editor .preview h1 { font-size: clamp(26px, 3.5vw, 38px); }
+.article-editor .preview h2 { font-size: 28px; }
+.article-editor .preview h3 { font-size: 22px; }
+.article-editor .preview p { margin: 0 0 1em; }
+
+.article-editor .preview blockquote {
+  margin: 1.6em 0;
+  padding: 8px 22px;
+  border-left: 3px solid var(--accent, #91b34e);
+  color: #cddbc5;
+  font-family: inherit;
+  font-size: 1.16em;
+}
+
+.article-editor .preview blockquote > p {
+  margin: 0;
+}
+
+.article-editor .preview blockquote > p + p {
+  margin-top: .75em;
+}
+
+.article-editor .preview blockquote .quote-author {
+  display: block;
+  margin-top: .85em;
+  color: var(--dim, #8ca388);
+  font-family: inherit;
+  font-size: .82em;
+  font-style: normal;
+}
+
+.article-editor .preview pre {
+  position: relative;
+  overflow: auto;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+  border-radius: 9px;
+  background: #0d1210;
+  white-space: pre-wrap;
+}
+
+.article-editor .preview pre:has(.code-language),
+.article-editor .preview pre.has-code-language {
+  padding-top: 34px;
+}
+
+.article-editor .preview code {
+  font-size: .86em;
+}
+
+.article-editor .preview :not(pre) > code {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--surface-soft, rgba(255, 255, 255, 0.06));
+}
+
+.article-editor .preview img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 9px;
+}
+
+.article-editor .preview table {
+  display: block;
+  overflow: auto;
+  border-collapse: collapse;
+}
+
+.article-editor .preview th,
+.article-editor .preview td {
+  padding: 9px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+}
+
+.article-editor .preview ul,
+.article-editor .preview ol {
+  padding-left: 24px;
+  margin: 0 0 1em;
+}
+
+/* Editor dialogs */
+.editor-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.editor-dialog-backdrop[hidden] {
+  display: none !important;
+}
+
+.editor-dialog {
+  background: var(--surface-raised, #18201a);
+  border: 1px solid var(--line, #384639);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  padding: 22px;
+  max-width: 460px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  color: var(--text, #dce8d9);
+  box-sizing: border-box;
+}
+
+.editor-dialog h3 {
+  margin: 0 0 14px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text, #dce8d9);
+}
+
+.editor-dialog .field-group {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.editor-dialog label {
+  font-size: 13px;
+  color: var(--dim, #8ca388);
+}
+
+.editor-dialog input[type="text"],
+.editor-dialog input[type="number"],
+.editor-dialog input[type="url"],
+.editor-dialog textarea {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--surface-soft, #121814);
+  border: 1px solid var(--line, #384639);
+  border-radius: 6px;
+  color: var(--text, #dce8d9);
+  font-family: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.editor-dialog input:focus,
+.editor-dialog textarea:focus {
+  outline: none;
+  border-color: var(--accent, #91b34e);
+}
+
+.editor-dialog textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.editor-dialog .dialog-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.editor-dialog .hint-chip {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--dim, #8ca388);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+
+.editor-dialog .hint-chip:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text, #dce8d9);
+}
+
+.editor-dialog .dialog-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text, #dce8d9);
+}
+
+.editor-dialog .dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.editor-dialog .dialog-error {
+  color: #e06c75;
+  font-size: 12px;
+  margin-top: 4px;
 }
