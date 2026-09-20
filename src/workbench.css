@@ -1230,7 +1230,7 @@
 .editor-dialog-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-modal, 200);
   background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(4px);
   display: flex;
@@ -1364,7 +1364,7 @@
 .article-top-bar {
   position: sticky;
   top: 0;
-  z-index: 60;
+  z-index: calc(var(--z-sticky, 50) + 10);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1446,7 +1446,7 @@
 .article-toolbar-host {
   position: sticky;
   top: 52px;
-  z-index: 50;
+  z-index: var(--z-sticky, 50);
   display: flex;
   justify-content: center;
   width: 100%;
@@ -1494,7 +1494,7 @@
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  z-index: 100;
+  z-index: calc(var(--z-sticky, 50) + 20);
   min-width: 220px;
   background: var(--surface, #141b17);
   border: 1px solid var(--line, rgba(255, 255, 255, 0.14));
@@ -1758,7 +1758,7 @@
 .article-settings-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-drawer, 100);
   background: rgba(0, 0, 0, 0.68);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);

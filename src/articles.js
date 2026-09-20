@@ -346,9 +346,24 @@ function openArticleImageDialog({ onInsertFile, uploadMedia, insert, notice }) {
   tabUpload.onclick = () => setTab('upload');
   tabUrl.onclick = () => setTab('url');
 
-  const close = () => modal.remove();
+  const onKeyDown = e => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      e.preventDefault();
+      close();
+    }
+  };
+  document.addEventListener('keydown', onKeyDown);
+
+  const close = () => {
+    document.removeEventListener('keydown', onKeyDown);
+    modal.remove();
+  };
   modal.querySelector('.close-dialog').onclick = close;
   modal.querySelector('.close-btn').onclick = close;
+  modal.onclick = e => {
+    if (e.target === modal) close();
+  };
 
   selectFileBtn.onclick = () => fileInput.click();
   fileInput.onchange = async () => {
@@ -808,6 +823,9 @@ export function mountArticles(host, { client, userId, username, profile, notice,
         return;
       }
       if (e.key === 'Escape' && !settingsBackdrop.hidden) {
+        if (document.querySelector('.image-editor-modal, .dialog-scrim:not(.article-settings-backdrop)')) {
+          return;
+        }
         closeSettings();
       }
     };
@@ -875,6 +893,11 @@ export function mountArticles(host, { client, userId, username, profile, notice,
         notice(err.message || 'Ошибка загрузки', true);
       } finally {
         coverFileHidden.value = '';
+        if (coverPreviewBox && !coverPreviewBox.hidden) {
+          changeCoverBtn?.focus();
+        } else {
+          selectCoverBtn?.focus();
+        }
       }
     };
 

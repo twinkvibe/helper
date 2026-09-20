@@ -298,6 +298,8 @@ export async function editImage(file, {
       </div>
     `;
 
+    const previousActiveElement = document.activeElement;
+    document.body.classList.add('modal-open');
     document.body.append(modal);
 
     const canvas = modal.querySelector('.crop-canvas');
@@ -310,6 +312,9 @@ export async function editImage(file, {
     const rotateLeftBtn = modal.querySelector('.rotate-left-btn');
     const rotateRightBtn = modal.querySelector('.rotate-right-btn');
     const resetBtn = modal.querySelector('.reset-btn');
+
+    // Focus primary action inside cropper
+    saveBtn.focus();
 
     // Attach icons to toolbar buttons
     rotateLeftBtn.append(icon('rotateLeft'));
@@ -493,17 +498,28 @@ export async function editImage(file, {
 
     function cleanup() {
       cleanupImage();
+      document.body.classList.remove('modal-open');
       modal.remove();
-      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('keydown', onKeyDown, true);
+      if (previousActiveElement && typeof previousActiveElement.focus === 'function' && previousActiveElement.isConnected) {
+        try {
+          previousActiveElement.focus();
+        } catch {
+          // Ignore focus errors
+        }
+      }
     }
 
     function onKeyDown(e) {
       if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
         cleanup();
         resolve(null);
       }
     }
-    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keydown', onKeyDown, true);
 
     closeBtn.onclick = () => {
       cleanup();

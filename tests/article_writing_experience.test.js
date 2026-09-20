@@ -663,3 +663,113 @@ test('ARTICLE IMAGE PIPELINE: article editor wires onImageFile to unified pipeli
     cleanup();
   }
 });
+
+test('ARTICLE SETTINGS & MODAL STACKING: layer hierarchy, cropper over drawer, and isolated Escape handling', async () => {
+  // 1. Static CSS layer hierarchy checks
+  const styleCss = fs.readFileSync(path.resolve(process.cwd(), 'src/style.css'), 'utf8');
+  const workbenchCss = fs.readFileSync(path.resolve(process.cwd(), 'src/workbench.css'), 'utf8');
+
+  assert.match(styleCss, /--z-drawer:\s*100;/, 'style.css must define --z-drawer: 100');
+  assert.match(styleCss, /--z-modal:\s*200;/, 'style.css must define --z-modal: 200');
+  assert.match(styleCss, /--z-cropper:\s*210;/, 'style.css must define --z-cropper: 210');
+  assert.match(styleCss, /\.dialog-scrim\s*\{[^}]*z-index:\s*var\(--z-modal,\s*200\)/, 'dialog-scrim must use --z-modal');
+  assert.match(styleCss, /\.image-editor-modal\s*\{[^}]*z-index:\s*var\(--z-cropper,\s*210\)/, 'image-editor-modal must use --z-cropper');
+  assert.match(styleCss, /body\.modal-open\s*\{[^}]*overflow:\s*hidden/, 'body.modal-open must lock overflow');
+  assert.match(workbenchCss, /\.article-settings-backdrop\s*\{[^}]*z-index:\s*var\(--z-drawer,\s*100\)/, 'article-settings-backdrop must use --z-drawer');
+
+  // 2. Interactive DOM behavior: Settings drawer + Cover upload + Escape isolation
+  const { dom, cleanup } = setupDom();
+  try {
+    const client = {
+      auth: { getSession: async () => ({ data: { session: { user: { id: 'u1' } } } }) },
+      from(table) {
+        if (table === 'articles') {
+          return {
+            select: () => ({
+              order: async () => ({
+                data: [{
+                  id: 'art-cover-stacking',
+                  title: 'Тест стека обложки',
+                  slug: 'cover-stacking-test',
+                  body: 'Текст.',
+                  access: 'private',
+                  published: false,
+                  updated_at: '2026-09-19T12:00:00Z',
+                }],
+                error: null,
+              }),
+            }),
+          };
+        }
+        return {};
+      },
+      storage: {
+        from() {
+          return {
+            upload: async () => ({ error: null }),
+            getPublicUrl: path => ({ data: { publicUrl: `https://storage.example.test/article-media/${path}` } }),
+          };
+        },
+      },
+    };
+
+    const host = dom.window.document.querySelector('#articles-root');
+    mountArticles(host, {
+      client,
+      userId: 'u1',
+      username: 'writer',
+      notice: () => {},
+      requireSession: async () => {},
+    });
+
+    await new Promise(r => setTimeout(r, 40));
+
+    // Open settings drawer
+    const settingsBtn = host.querySelector('.article-settings-btn');
+    assert.ok(settingsBtn, 'Settings button must exist');
+    settingsBtn.click();
+
+    const backdrop = host.querySelector('.article-settings-backdrop');
+    assert.equal(backdrop.hidden, false, 'Settings drawer must be open');
+
+    const selectCoverBtn = host.querySelector('.select-cover-btn');
+    assert.ok(selectCoverBtn, 'Select cover button must exist in settings drawer');
+
+    const coverFileInput = host.querySelector('.cover-file-hidden');
+    assert.ok(coverFileInput, 'Cover file input must exist');
+
+    // Trigger cover image selection
+    const coverFile = new dom.window.File(['cover-bytes'], 'banner.png', { type: 'image/png' });
+    Object.defineProperty(coverFileInput, 'files', { value: [coverFile], configurable: true });
+    coverFileInput.onchange();
+
+    await new Promise(r => setTimeout(r, 40));
+
+    // Verify image cropper modal is mounted and body is locked
+    const cropModal = dom.window.document.querySelector('.image-editor-modal');
+    assert.ok(cropModal, 'Cropper modal must be open');
+    assert.ok(dom.window.document.body.classList.contains('modal-open'), 'Body must have modal-open class while cropper is active');
+
+    // Press Escape while cropper is open
+    const escapeEv = new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    dom.window.document.dispatchEvent(escapeEv);
+
+    await new Promise(r => setTimeout(r, 40));
+
+    // Cropper must close, but settings drawer must STAY OPEN
+    assert.equal(dom.window.document.querySelector('.image-editor-modal'), null, 'Cropper modal must be closed on Escape');
+    assert.equal(dom.window.document.body.classList.contains('modal-open'), false, 'Body modal-open class must be removed');
+    assert.equal(backdrop.hidden, false, 'Settings drawer MUST remain open after cropper is closed via Escape');
+
+    // Focus must return to a sensible cover control in the drawer
+    assert.equal(dom.window.document.activeElement, selectCoverBtn, 'Focus must return to select-cover button');
+
+    // Pressing Escape again must now close the Settings drawer
+    const escapeEv2 = new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    dom.window.document.dispatchEvent(escapeEv2);
+
+    assert.equal(backdrop.hidden, true, 'Second Escape must close the settings drawer');
+  } finally {
+    cleanup();
+  }
+});

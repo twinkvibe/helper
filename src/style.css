@@ -53,6 +53,14 @@
   --radius-lg: 12px;
   --radius-full: 9999px;
 
+  /* Layering (z-index hierarchy) */
+  --z-base: 0;
+  --z-sticky: 50;
+  --z-drawer: 100;
+  --z-modal: 200;
+  --z-cropper: 210;
+  --z-toast: 300;
+
   /* Shadows */
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.22);
   --shadow: 0 8px 24px rgb(0 0 0 / 0.35);
@@ -85,6 +93,10 @@ body {
   color: var(--text);
   font-size: 14px;
   line-height: 1.5;
+}
+
+body.modal-open {
+  overflow: hidden;
 }
 
 button,
@@ -1321,13 +1333,15 @@ header {
 .dialog-scrim {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: var(--z-modal, 200);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
   background: rgba(8, 12, 10, 0.72);
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  overscroll-behavior: contain;
 }
 
 .dialog-box {
@@ -1338,6 +1352,11 @@ header {
   background: var(--surface-raised);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
   overflow: hidden;
+}
+
+/* Image Editor Modal (stacks above generic dialogs and drawers) */
+.image-editor-modal {
+  z-index: var(--z-cropper, 210);
 }
 
 /* Image Editor & Cropper */
