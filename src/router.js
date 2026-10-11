@@ -2,6 +2,7 @@ export const KNOWN_PRIVATE_PAGES = {
   '': 'todos',
   tasks: 'todos',
   notes: 'markdown',
+  dossier: 'dossier',
   editor: 'articles',
   account: 'settings',
   admin: 'admin',
@@ -12,6 +13,7 @@ export const KNOWN_PRIVATE_PAGES = {
 export const PAGE_TO_ROUTE = {
   todos: '',
   markdown: 'notes',
+  dossier: 'dossier',
   articles: 'editor',
   settings: 'account',
   admin: 'admin',

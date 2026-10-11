@@ -6,6 +6,16 @@ import path from 'node:path';
 import { mountArticles } from '../src/articles.js';
 import { attachEditor } from '../src/editor.js';
 
+// Poll instead of a fixed sleep so async FileReader/upload work is not racy.
+async function waitFor(predicate, { timeout = 2000, interval = 10 } = {}) {
+  const start = Date.now();
+  for (;;) {
+    if (predicate()) return true;
+    if (Date.now() - start > timeout) return false;
+    await new Promise(resolve => setTimeout(resolve, interval));
+  }
+}
+
 function setupDom() {
   const dom = new JSDOM('<!DOCTYPE html><html><body><div id="articles-root"></div></body></html>', {
     url: 'https://helper.slutvibe.site/',
@@ -526,7 +536,7 @@ test('ARTICLE IMAGE PIPELINE: generic editor.js onImageFile, drag/drop, and remo
     notePaste.clipboardData = { files: [file] };
     hostNote.dispatchEvent(notePaste);
 
-    await new Promise(r => setTimeout(r, 20));
+    await waitFor(() => /attachment:\/\/note-att-sample\.png/.test(noteEditor.getValue()));
     assert.match(noteEditor.getValue(), /attachment:\/\/note-att-sample\.png/, 'Note editor must still create attachment:// links');
   } finally {
     cleanup();

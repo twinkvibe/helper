@@ -4,6 +4,8 @@ import {
   isAllowedOrigin,
   createCorsResponse,
 } from './cors.ts';
+import { parseChain, chatComplete } from '../_shared/ai.ts';
+import { sendTelegram } from '../_shared/telegram.ts';
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -83,6 +85,158 @@ Deno.serve(async (req) => {
       const saved = await admin.from('profiles').update({ must_change_password: false }).eq('id', user.id);
       if (saved.error) throw saved.error;
       await logAudit('password_change', 'profiles', user.id, {});
+      return reply(200, { ok: true });
+    }
+
+    const aiChain = () => parseChain(Deno.env.get('AI_CHAIN'), {
+      apiKey: Deno.env.get('AI_API_KEY'),
+      baseUrl: Deno.env.get('AI_BASE_URL'),
+      model: Deno.env.get('AI_MODEL'),
+    });
+
+    // Best-effort Telegram ping to the owner's linked chat. Never throws.
+    const notifyLinkedChat = async (ownerId: string, text: string) => {
+      try {
+        const token = Deno.env.get('BOT_TOKEN');
+        if (!token) return;
+        const { data: link } = await admin
+          .from('telegram_links')
+          .select('chat_id')
+          .eq('user_id', ownerId)
+          .maybeSingle();
+        const chatId = (link as { chat_id?: number | null } | null)?.chat_id;
+        if (!chatId) return;
+        await sendTelegram(token, chatId, text);
+      } catch (err) {
+        console.error('Telegram notify failed:', err);
+      }
+    };
+
+    const runAi = async (messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>) => {
+      const chain = aiChain();
+      if (!chain.providers.length) return { notConfigured: true as const };
+      try {
+        return await chatComplete(chain, messages, { maxTokens: 900, temperature: 0.3 });
+      } catch (err) {
+        console.error('AI chain failed:', (err as Error)?.message);
+        return null;
+      }
+    };
+
+    // Dossier AI assistant — available to every active authenticated user.
+    if (body.action === 'dossier:analyze') {
+      const text = typeof body.body === 'string' ? body.body.trim() : '';
+      if (!text) return reply(400, { error: 'Опиши событие, чтобы ИИ было что разобрать' });
+      if (text.length > 12000) return reply(413, { error: 'Слишком большой текст для ИИ' });
+
+      const answer = await runAi([
+        {
+          role: 'system',
+          content: [
+            'Ты аккуратный помощник для личного досье.',
+            'Помогаешь восстановить и упорядочить воспоминания о событиях.',
+            'Отделяй подтверждённые факты от предположений и догадок и явно помечай неуверенность.',
+            'Не выдумывай детали. Если данных не хватает, перечисли конкретные уточняющие вопросы.',
+            'Отвечай по-русски, кратко и по делу. Форматируй ответ в Markdown.',
+          ].join(' '),
+        },
+        { role: 'user', content: `Заголовок: ${typeof body.title === 'string' ? body.title : ''}\n\n${text}` },
+      ]);
+      if (answer && 'notConfigured' in answer) return reply(200, { notConfigured: true });
+      if (!answer) {
+        await notifyLinkedChat(user.id, '⚠️ ИИ-помощник: все провайдеры недоступны. Проверь ключи и повтори позже.');
+        return reply(502, { error: 'ИИ-помощник временно недоступен. Уведомление отправлено в Telegram.' });
+      }
+      await logAudit('dossier_ai_analyze', 'dossier', null, { chars: text.length, provider: answer.provider, model: answer.model });
+      return reply(200, { text: answer.text, provider: answer.provider, model: answer.model });
+    }
+
+    // Dossier AI review — checks a person's profile: relationship status, facts, open questions.
+    if (body.action === 'dossier:review') {
+      const person = body.person && typeof body.person === 'object' ? body.person : {};
+      const name = typeof person.name === 'string' ? person.name.slice(0, 120) : '';
+      if (!name.trim()) return reply(400, { error: 'Укажи имя человека' });
+
+      const entries = Array.isArray(body.entries) ? body.entries.slice(0, 20) : [];
+      const entryText = entries
+        .map((e: any) => {
+          const title = typeof e?.title === 'string' ? e.title.slice(0, 200) : '';
+          const bodyText = typeof e?.body === 'string' ? e.body.slice(0, 2000) : '';
+          return `— ${title}\n${bodyText}`.trim();
+        })
+        .filter(Boolean)
+        .join('\n\n')
+        .slice(0, 12000);
+
+      const profile = [
+        `Имя: ${name}`,
+        `Кто это: ${typeof person.relation === 'string' ? person.relation.slice(0, 120) : ''}`,
+        `Статус отношений (как видит владелец): ${typeof person.relationship === 'string' ? person.relationship.slice(0, 120) : ''}`,
+        `Известные факты: ${JSON.stringify(person.facts || []).slice(0, 2000)}`,
+        `Заметки: ${typeof person.bio === 'string' ? person.bio.slice(0, 2000) : ''}`,
+      ].join('\n');
+
+      const answer = await runAi([
+        {
+          role: 'system',
+          content: [
+            'Ты аккуратный помощник для личного досье.',
+            'Проверь карточку человека: статус отношений и известные факты.',
+            'Предложи конкретные правки, если статус противоречит записям.',
+            'Отдели подтверждённое от предположений, не выдумывай детали.',
+            'Закончи списком уточняющих вопросов.',
+            'Отвечай по-русски, кратко, в Markdown.',
+          ].join(' '),
+        },
+        { role: 'user', content: `${profile}\n\nЗаписи:\n${entryText || '(записей пока нет)'}` },
+      ]);
+      if (answer && 'notConfigured' in answer) return reply(200, { notConfigured: true });
+      if (!answer) {
+        await notifyLinkedChat(user.id, '⚠️ ИИ-помощник: все провайдеры недоступны. Проверь ключи и повтори позже.');
+        return reply(502, { error: 'ИИ-помощник временно недоступен. Уведомление отправлено в Telegram.' });
+      }
+      await logAudit('dossier_ai_review', 'dossier', null, { chars: entryText.length, provider: answer.provider, model: answer.model });
+      return reply(200, { text: answer.text, provider: answer.provider, model: answer.model });
+    }
+
+    // Telegram linking: one-time 6-digit code, 10 minutes to live.
+    if (body.action === 'telegram:code') {
+      const digits = new Uint32Array(1);
+      crypto.getRandomValues(digits);
+      const code = String(100000 + (digits[0] % 900000));
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code));
+      const codeHash = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+      const codeExpires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      const { data: existing } = await admin.from('telegram_links').select('user_id').eq('user_id', user.id).maybeSingle();
+      const row = { user_id: user.id, code_hash: codeHash, code_expires: codeExpires };
+      const saved = existing
+        ? await admin.from('telegram_links').update(row).eq('user_id', user.id)
+        : await admin.from('telegram_links').insert(row);
+      if (saved.error) throw saved.error;
+      await logAudit('telegram_code', 'telegram', null, {});
+      return reply(200, { code });
+    }
+
+    // Telegram unlink: forget the chat, keep the row for future codes.
+    if (body.action === 'telegram:unlink') {
+      const cleared = await admin.from('telegram_links').update({ chat_id: null }).eq('user_id', user.id);
+      if (cleared.error) throw cleared.error;
+      await logAudit('telegram_unlink', 'telegram', null, {});
+      return reply(200, { ok: true });
+    }
+
+    // Login ping to the owner's Telegram. Best-effort, always 200.
+    if (body.action === 'notify:login') {
+      const when = new Date().toLocaleString('ru-RU');
+      await notifyLinkedChat(user.id, `🔑 Вход в helper: @${me.username} · ${when}`);
+      return reply(200, { ok: true });
+    }
+
+    // Client error ping to the owner's Telegram. Best-effort, always 200.
+    if (body.action === 'notify:error') {
+      const message = typeof body.message === 'string' ? body.message.slice(0, 300) : 'Неизвестная ошибка';
+      const context = typeof body.context === 'string' ? body.context.slice(0, 120) : '';
+      await notifyLinkedChat(user.id, `❗ Ошибка helper${context ? ` (${context})` : ''}: ${message}`);
       return reply(200, { ok: true });
     }
 

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { sessionStorageAdapter } from './security.js';
 import { mountWorkbench } from './workbench.js';
+import { mountDossier } from './dossier.js';
 import { mountArticles, publicArticleSlug, renderPublicArticle, renderPublicProfile } from './articles.js';
 import { icon } from './icons.js';
 import { parseRoute, sanitizeNext, pageHref, brandHtml, appPath } from './router.js';
@@ -217,6 +218,8 @@ async function enter(nextUser) {
   profile = data;
   if (profile.must_change_password) page = 'settings';
   shell();
+  // Best-effort login ping to the linked Telegram chat. Never blocks the UI.
+  action({ action: 'notify:login' }).catch(() => {});
 }
 
 function shell() {
@@ -229,6 +232,7 @@ function shell() {
       items: [
         ['todos', 'tasks', 'Задачи'],
         ['markdown', 'note', 'Заметки'],
+        ['dossier', 'dossier', 'Досье'],
       ],
     },
     {
@@ -362,7 +366,7 @@ function shell() {
     }
   };
 
-  const pages = { todos, markdown, articles, settings, admin: adminPage, adminArticles, logs };
+  const pages = { todos, markdown, dossier, articles, settings, admin: adminPage, adminArticles, logs };
   (pages[page] || todos)();
 }
 
@@ -372,6 +376,28 @@ async function todos() {
 
 function markdown() {
   cleanupView = mountWorkbench($('view'), { client, userId: user.id, initial: 'markdown', notice, requireSession });
+}
+
+let assistantModulePromise = null;
+async function dossierAssistant(payload) {
+  if (!assistantModulePromise) {
+    assistantModulePromise = import('./dossier-assistant.js')
+      .then(m => m.createDossierAssistant({ client, requireSession, endpoint: url, apiKey: key }))
+      .catch(() => null);
+  }
+  const assistant = await assistantModulePromise;
+  if (!assistant) return null;
+  return assistant(payload);
+}
+
+function dossier() {
+  cleanupView = mountDossier($('view'), {
+    client,
+    userId: user.id,
+    notice,
+    requireSession,
+    onAssistant: typeof window !== 'undefined' && window.__HELPER_ASSISTANT__ ? window.__HELPER_ASSISTANT__ : dossierAssistant,
+  });
 }
 
 function articles() {
@@ -553,6 +579,19 @@ function settings() {
             <a href="${base}u/${escape(profile.username)}" target="_blank" rel="noopener" class="quiet" style="display:inline-flex;margin-top:14px;font-size:13px;">Открыть публичный профиль ↗</a>
           </div>
         </section>
+
+        <section class="panel" id="telegram-panel">
+          <h3>Telegram-бот</h3>
+          <p class="muted" id="telegram-status">Проверяем привязку…</p>
+          <div id="telegram-code-box" style="display:none;">
+            <p class="muted">Отправь боту команду (код живёт 10 минут):</p>
+            <p><code id="telegram-code" style="font-size:22px;letter-spacing:3px;"></code></p>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+            <button type="button" class="secondary" id="telegram-code-btn">Получить код</button>
+            <button type="button" class="quiet" id="telegram-unlink-btn">Отвязать</button>
+          </div>
+        </section>
       </div>
     </div>
   `;
@@ -580,6 +619,19 @@ function settings() {
   const deleteAvatarBtn = $('delete-avatar-btn');
 
   changeAvatarBtn.onclick = () => avatarFileInput.click();
+  const avatarRow = document.querySelector('.profile-avatar-row');
+  if (avatarRow) {
+    avatarRow.title = 'Можно вставить фото из буфера обмена (Ctrl+V)';
+    avatarRow.addEventListener('paste', e => {
+      const file = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith('image/'));
+      if (!file) return;
+      e.preventDefault();
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      avatarFileInput.files = transfer.files;
+      avatarFileInput.onchange();
+    });
+  }
   avatarFileInput.onchange = async () => {
     const file = avatarFileInput.files[0];
     if (!file) return;
@@ -686,6 +738,51 @@ function settings() {
     await enter(user);
     notice('Пароль изменён.');
   });
+
+  // Telegram linking
+  const tgStatus = $('telegram-status');
+  const tgCodeBox = $('telegram-code-box');
+  const tgCode = $('telegram-code');
+  const refreshTelegram = async () => {
+    try {
+      await requireSession();
+      const { data } = await client.from('telegram_links').select('chat_id').eq('user_id', user.id).maybeSingle();
+      if (tgStatus) tgStatus.textContent = data?.chat_id
+        ? 'Чат привязан: уведомления, команды и кнопки работают.'
+        : 'Чат не привязан. Получи код и отправь боту команду /start 123456.';
+    } catch {
+      if (tgStatus) tgStatus.textContent = 'Не удалось проверить привязку. Проверь миграцию 20260926_telegram.sql.';
+    }
+  };
+  $('telegram-code-btn').onclick = async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const res = await action({ action: 'telegram:code' });
+      if (tgCode) tgCode.textContent = `/start ${res.code}`;
+      if (tgCodeBox) tgCodeBox.style.display = '';
+      notice('Код создан. Введи его боту в течение 10 минут.');
+    } catch (error) {
+      notice(error.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+  $('telegram-unlink-btn').onclick = async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      await action({ action: 'telegram:unlink' });
+      if (tgCodeBox) tgCodeBox.style.display = 'none';
+      notice('Чат отвязан.');
+      await refreshTelegram();
+    } catch (error) {
+      notice(error.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+  refreshTelegram();
 }
 
 async function adminPage() {
@@ -1019,6 +1116,15 @@ async function boot() {
 
     const reportClientError = (message, context = 'window') => {
       if (client) client.rpc('record_client_error', { error_message: String(message).slice(0, 500), error_context: context }).catch(() => {});
+      // Throttled Telegram ping (max once per 5 minutes) — best-effort.
+      try {
+        const now = Date.now();
+        const last = Number(localStorage.getItem('helper:last-error-notify') || 0);
+        if (user && now - last > 5 * 60 * 1000) {
+          localStorage.setItem('helper:last-error-notify', String(now));
+          action({ action: 'notify:error', message: String(message).slice(0, 300), context }).catch(() => {});
+        }
+      } catch {}
     };
     window.addEventListener('error', event => reportClientError(event.message || 'Неизвестная ошибка', 'window'));
     window.addEventListener('unhandledrejection', event => reportClientError(event.reason?.message || event.reason || 'Необработанное обещание', 'promise'));

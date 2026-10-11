@@ -1,5 +1,6 @@
 import { attachEditor } from './editor.js';
 import { loadNotes, saveNotes, tagsIn, filterTasks } from './notes.js';
+import { mediaPath, classifyUpload } from './dossier-model.js';
 import { icon, iconButton } from './icons.js';
 const notebooks=new Map();
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -62,15 +63,25 @@ export function mountWorkbench(host,{client,userId,initial='todos',notice,requir
   if(filters.tag){const related=activeNotes().filter(n=>tagsIn(n.body).includes(filters.tag));const box=el('div','related');box.append(el('h3','',`Заметки с #${filters.tag}`));related.forEach(n=>box.append(button(n.title,()=>openNote(n.id),'tag')));if(!related.length)box.append(el('p','muted','В этом браузере нет заметок с таким тегом.'));area.append(box);}
   if(focusId){const input=host.querySelector('#'+focusId);if(input){input.focus();if(caret!==null&&input.setSelectionRange)input.setSelectionRange(caret,caret);}}
  }
+  async function uploadTaskMedia(file){
+   classifyUpload(file);
+   await requireSession();
+   const path=mediaPath(userId,'tasks',file.name);
+   const {error}=await client.storage.from('article-media').upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false});
+   if(error)throw new Error('Не удалось загрузить файл в хранилище.');
+   const url=client.storage.from('article-media').getPublicUrl(path)?.data?.publicUrl;
+   if(!url)throw new Error('Не удалось получить ссылку на файл.');
+   return url;
+  }
  function taskDetails(task){
   selectedTask=task.id;const dialog=el('dialog','task-dialog');
-  dialog.innerHTML='<form method="dialog" class="detail-form"><div class="section-heading"><h2>Задача</h2><button type="button" class="quiet close">Закрыть</button></div><label>Название<input name="title" maxlength="500" required></label><div class="detail-fields"><label>Список<input name="list_name" maxlength="80" required list="task-lists"></label><datalist id="task-lists"></datalist><label>Срок<input type="date" name="due_date"></label><label>Приоритет<select name="priority"><option value="0">Обычный</option><option value="1">Средний</option><option value="2">Высокий</option></select></label></div><label>Теги<input name="tags" placeholder="#проект #идеи"></label><label>Связанная заметка<select name="note_id"><option value="">Без заметки</option></select></label><div class="task-editor"></div><p class="muted">Описание и фотографии сохраняются вместе с задачей в Supabase. Подзадачи: - [ ] и - [x].</p><button type="submit" class="primary">Сохранить задачу</button><p class="detail-status" role="status"></p></form>';
+  dialog.innerHTML='<form method="dialog" class="detail-form"><div class="section-heading"><h2>Задача</h2><button type="button" class="quiet close">Закрыть</button></div><label>Название<input name="title" maxlength="500" required></label><div class="detail-fields"><label>Список<input name="list_name" maxlength="80" required list="task-lists"></label><datalist id="task-lists"></datalist><label>Срок<input type="date" name="due_date"></label><label>Приоритет<select name="priority"><option value="0">Обычный</option><option value="1">Средний</option><option value="2">Высокий</option></select></label></div><label>Теги<input name="tags" placeholder="#проект #идеи"></label><label>Связанная заметка<select name="note_id"><option value="">Без заметки</option></select></label><div class="task-editor"></div><p class="muted">Текст хранится в задаче. Фото, видео и файлы из буфера или перетаскиванием загружаются в общее хранилище по публичной ссылке. Подзадачи: - [ ] и - [x].</p><button type="submit" class="primary">Сохранить задачу</button><p class="detail-status" role="status"></p></form>';
   const form=dialog.querySelector('form');for(const name of ['title','list_name','due_date','priority'])form.elements[name].value=task[name]??(name==='list_name'?'Входящие':'');
   form.elements.tags.value=(task.tags||[]).map(t=>'#'+t).join(' ');
   [...new Set(tasks.map(t=>t.list_name))].forEach(v=>dialog.querySelector('datalist').append(new window.Option(v,v)));
   activeNotes().forEach(n=>form.elements.note_id.append(new window.Option(n.title,n.id)));
   if(task.note_id&&!activeNotes().some(n=>n.id===task.note_id))form.elements.note_id.append(new window.Option('Недоступна в этом браузере',task.note_id));form.elements.note_id.value=task.note_id||'';
-  const md=attachEditor(dialog.querySelector('.task-editor'),{value:task.description||'',id:'task-description',onChange:()=>taskDirty=true,onLink:()=>{dialog.querySelector('.detail-status').textContent='Сначала сохрани и закрой задачу, затем открой связанную заметку.';},onError:m=>dialog.querySelector('.detail-status').textContent=m});
+  const md=attachEditor(dialog.querySelector('.task-editor'),{value:task.description||'',id:'task-description',onChange:()=>taskDirty=true,onLink:()=>{dialog.querySelector('.detail-status').textContent='Сначала сохрани и закрой задачу, затем открой связанную заметку.';},onImageFile:async(file,{insert})=>{const url=await uploadTaskMedia(file);const alt=(file.name||'изображение').replace(/\.[^.]+$/,'').replace(/[\[\]]/g,'')||'изображение';insert(`\n![${alt}|640](${url})\n`);},onFile:async(file,{insert})=>{const url=await uploadTaskMedia(file);const name=(file.name||'файл').replace(/[\[\]]/g,'');insert(`\n[${name}](${url})\n`);},onError:m=>dialog.querySelector('.detail-status').textContent=m});
   form.addEventListener('input',()=>taskDirty=true);
   const close=()=>{if(taskDirty&&!window.confirm('Закрыть без сохранения изменений задачи?'))return;taskDirty=false;dialog.close();dialog.remove();selectedTask=null;};dialog.querySelector('.close').onclick=close;dialog.oncancel=e=>{e.preventDefault();close();};
   form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('[type=submit]');b.disabled=true;try{const title=form.elements.title.value.trim(),list=form.elements.list_name.value.trim();if(!title||!list)throw new Error('Заполни название и список.');if(md.getValue().length>5000000)throw new Error('Описание слишком большое (максимум 5 млн символов).');await changeTask(task.id,{title,list_name:list,due_date:form.elements.due_date.value||null,priority:Number(form.elements.priority.value),tags:tagsIn(form.elements.tags.value),note_id:form.elements.note_id.value||null,description:md.getValue()});taskDirty=false;dialog.close();dialog.remove();selectedTask=null;if(alive)renderTasks();}catch(error){dialog.querySelector('.detail-status').textContent=error.message;}finally{b.disabled=false;}};

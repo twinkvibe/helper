@@ -1,3 +1,5 @@
 project_id = "helper"
 [functions.account]
 verify_jwt = false
+[functions.telegram]
+verify_jwt = false

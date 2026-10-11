@@ -22,13 +22,13 @@ npm run preview
 
 ## Making changes
 
-Place authentication and shell behavior in `main.js`. Keep the task/note domain in `workbench.js`, publications and public views in `articles.js`, image cropper logic in `image-editor.js`, route helpers in `router.js`, generic Markdown editing in `editor.js`, sanitization in `security.js`, and pure storage/filter logic in `notes.js`. Extract a module when a concern can be tested independently.
+Place authentication and shell behavior in `main.js`. Keep the task/note domain in `workbench.js`, publications and public views in `articles.js`, image cropper logic in `image-editor.js`, route helpers in `router.js`, generic Markdown editing in `editor.js`, sanitization in `security.js`, and pure storage/filter logic in `notes.js`. The dossier lives in `dossier.js` (UI), `dossier-model.js` (pure logic), and `dossier-assistant.js` (lazy AI bridge). Extract a module when a concern can be tested independently.
 
 Tests should target behavior and boundaries: ownership filters, session gates, migration compatibility, sanitization payloads, local persistence, editor preservation, routing semantics, and error recovery. Avoid tests that merely repeat literal implementation details.
 
 ## Supabase workflow
 
-For a fresh project, run `supabase/schema.sql`. For an existing project, apply only migrations that have not previously run, in filename order. Never rerun the full schema over an installed project. For existing instances up through `20260920_article_media_access.sql`, run `20260921_profile_admin_publication_ux.sql`.
+For a fresh project, run `supabase/schema.sql`. For an existing project, apply only migrations that have not previously run, in filename order. Never rerun the full schema over an installed project. For existing instances up through `20260920_article_media_access.sql`, run `20260921_profile_admin_publication_ux.sql`. For the dossier feature, run `20260924_dossier.sql` and then `20260925_dossier_profile.sql` (tables, profile fields, person links, RLS, and the private `dossier-media` bucket). For the Telegram bot, run `20260926_telegram.sql` after those.
 
 When schema changes:
 

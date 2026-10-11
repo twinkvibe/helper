@@ -3,6 +3,7 @@ import { renderMarkdown } from './security.js';
 import { icon } from './icons.js';
 import { brandHtml } from './router.js';
 import { editImage, validateImageFile } from './image-editor.js';
+import { classifyUpload } from './dossier-model.js';
 
 const MAX_BODY = 5000000;
 const slugify = value =>
@@ -421,8 +422,7 @@ export function mountArticles(host, { client, userId, username, profile, notice,
   let articles = [], selected = null, editor = null, alive = true;
 
   const uploadMedia = async (file, originalName) => {
-    validateImageFile(file);
-    const fileName = originalName || file.name || 'image';
+    const fileName = originalName || file.name || 'file';
     const safe = fileName.toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
     const path = `${userId}/${crypto.randomUUID()}-${safe}`;
     const { error } = await client.storage.from('article-media').upload(path, file, {
@@ -434,7 +434,7 @@ export function mountArticles(host, { client, userId, username, profile, notice,
         code: error.code || null,
         message: error.message || null,
       });
-      const err = new Error('Не удалось загрузить изображение в хранилище.');
+      const err = new Error('Не удалось загрузить файл в хранилище.');
       err.stage = 'storage upload';
       throw err;
     }
@@ -442,7 +442,7 @@ export function mountArticles(host, { client, userId, username, profile, notice,
     const url = publicUrlData?.publicUrl;
     if (!url) {
       console.error('[Image Pipeline: public URL]', { path });
-      const err = new Error('Не удалось получить публичную ссылку на изображение.');
+      const err = new Error('Не удалось получить публичную ссылку на файл.');
       err.stage = 'public URL';
       throw err;
     }
@@ -950,6 +950,13 @@ export function mountArticles(host, { client, userId, username, profile, notice,
       },
       onImageFile: async (file, { insert }) => {
         await insertArticleImageFile(file, insert);
+      },
+      onFile: async (file, { insert }) => {
+        classifyUpload(file);
+        const url = await uploadMedia(file, file.name);
+        const safeName = (file.name || 'файл').replace(/[\[\]]/g, '');
+        insert(`\n[${safeName}](${url})\n`);
+        notice('Файл вставлен в текст.');
       },
       onError: m => notice(m, true),
       onImageRequest: ({ insert }) => {

@@ -24,6 +24,7 @@ export function attachEditor(host, {
   onError = () => {},
   onImageRequest = null,
   onImageFile = null,
+  onFile = null,
   id = 'source',
   imageStore = null,
   variant = 'basic',
@@ -823,6 +824,23 @@ export function attachEditor(host, {
     onError('Вставка изображения из файла здесь не поддерживается.');
   }
 
+  async function handleMediaFile(file) {
+    if (!file) return;
+    if (file.type.startsWith('image/')) {
+      handleImageFile(file);
+      return;
+    }
+    if (onFile) {
+      try {
+        await onFile(file, { insert });
+      } catch (err) {
+        onError(err?.message || 'Ошибка загрузки файла.');
+      }
+      return;
+    }
+    onError('Вставка таких файлов здесь не поддерживается.');
+  }
+
   fileInput.onchange = () => {
     if (fileInput.files[0]) handleImageFile(fileInput.files[0]);
     fileInput.value = '';
@@ -840,17 +858,21 @@ export function attachEditor(host, {
   }
 
   host.addEventListener('paste', e => {
-    const image = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith('image/'));
-    if (image) {
-      e.preventDefault();
-      handleImageFile(image);
-    }
+    const files = [...(e.clipboardData?.files || [])];
+    if (!files.length) return;
+    const image = files.find(f => f.type.startsWith('image/'));
+    e.preventDefault();
+    handleMediaFile(image || files[0]);
   });
 
   const canAcceptImage = Boolean(imageStore || onImageFile);
+  const canAcceptFile = Boolean(onFile);
 
   host.addEventListener('dragover', e => {
-    if (canAcceptImage && [...(e.dataTransfer?.items || [])].some(item => item.type.startsWith('image/'))) {
+    const items = [...(e.dataTransfer?.items || [])];
+    if (!items.length) return;
+    const hasImage = items.some(item => item.type.startsWith('image/'));
+    if ((hasImage && canAcceptImage) || canAcceptFile) {
       e.preventDefault();
       host.classList.add('drag-image');
     }
@@ -858,10 +880,15 @@ export function attachEditor(host, {
   host.addEventListener('dragleave', () => host.classList.remove('drag-image'));
   host.addEventListener('drop', e => {
     host.classList.remove('drag-image');
-    const image = [...(e.dataTransfer?.files || [])].find(item => item.type.startsWith('image/'));
-    if (image) {
+    const files = [...(e.dataTransfer?.files || [])];
+    if (!files.length) return;
+    const image = files.find(item => item.type.startsWith('image/'));
+    if (image && canAcceptImage) {
       e.preventDefault();
       handleImageFile(image);
+    } else if (canAcceptFile) {
+      e.preventDefault();
+      handleMediaFile(image || files[0]);
     }
   });
 

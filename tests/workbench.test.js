@@ -43,6 +43,50 @@ test('Editor uses a single textarea source and completely removes live/block edi
   dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
 });
 
+test('Editor routes pasted and dropped non-image files to onFile', () => {
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/'});
+  const names=['window','document','localStorage'];
+  const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
+  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
+  const host = document.querySelector('#editor');
+  let received=null;const errors=[];
+  attachEditor(host, { value: '', onFile: async file => { received=file; }, onError: m => errors.push(m) });
+  const video = new dom.window.File(['bytes'], 'clip.mp4', { type: 'video/mp4' });
+  const paste = new dom.window.Event('paste', { bubbles: true, cancelable: true });
+  paste.clipboardData = { files: [video] };
+  host.dispatchEvent(paste);
+  assert.equal(received, video);
+  assert.equal(paste.defaultPrevented, true);
+  received=null;
+  const over = new dom.window.Event('dragover', { bubbles: true, cancelable: true });
+  over.dataTransfer = { items: [{ type: 'video/mp4' }] };
+  host.dispatchEvent(over);
+  assert.equal(over.defaultPrevented, true);
+  const drop = new dom.window.Event('drop', { bubbles: true, cancelable: true });
+  drop.dataTransfer = { files: [video] };
+  host.dispatchEvent(drop);
+  assert.equal(received, video);
+  assert.equal(drop.defaultPrevented, true);
+  assert.deepEqual(errors, []);
+  dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
+});
+
+test('Editor rejects non-image files with a neutral error when onFile is missing', () => {
+  const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/'});
+  const names=['window','document','localStorage'];
+  const previous=Object.fromEntries(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
+  for(const [name,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage}))Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
+  const host = document.querySelector('#editor');
+  let taskError=null;
+  attachEditor(host, { variant: 'basic', onError: msg => { taskError = msg; } });
+  const doc = new dom.window.File(['bytes'], 'report.pdf', { type: 'application/pdf' });
+  const paste = new dom.window.Event('paste', { bubbles: true, cancelable: true });
+  paste.clipboardData = { files: [doc] };
+  host.dispatchEvent(paste);
+  assert.equal(taskError, 'Вставка таких файлов здесь не поддерживается.');
+  dom.window.close();for(const name of names){if(previous[name])Object.defineProperty(globalThis,name,previous[name]);else delete globalThis[name];}
+});
+
 test('Editor resolves local attachment references without exposing data URLs', () => {
   const dom = new JSDOM('<section id="editor"></section>', {url:'https://example.test/'});
   const names=['window','document','localStorage'];

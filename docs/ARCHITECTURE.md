@@ -51,6 +51,18 @@ Internal Markdown links use `#note=<UUID>`. Renaming a note therefore does not b
 
 Images selected from the device are stored as local note attachments with short `attachment://` references in the Markdown source, currently limited to 1 MB each. Remote images must use HTTPS. Task descriptions store any existing embedded images in PostgreSQL; note attachments count against browser storage quota.
 
+## Dossier
+
+`dossier_people`, `dossier_entries`, `dossier_entry_people`, and `dossier_person_links` store owner-only records: one profile card per person (private avatar, relationship status, key-value facts, links to other people) plus a day-grouped event timeline with Markdown, photos, and video. Row level security mirrors `todos`: an owner may read and write only their own rows, and only while their profile is active and no forced password change is pending. Unlike local notes, the dossier synchronizes across devices.
+
+Event bodies are Markdown rendered through `renderMarkdown`. Photos are uploaded to the private storage bucket `dossier-media` under `<userId>/<entryId>/…`; the bucket is not public, so the frontend requests short-lived signed URLs and never exposes a stable public path. `account` deletion cleans the whole `<userId>/` prefix.
+
+## AI providers and Telegram
+
+AI actions (`dossier:analyze`, `dossier:review`, bot chat) share the provider chain in `supabase/functions/_shared/ai.ts`, configured by the `AI_CHAIN` secret (ordered providers and models, OpenAI-compatible `/chat/completions`). Attempts run provider-by-provider; 401/403 skips the whole provider; total failure raises `AI_UNAVAILABLE`, and web-initiated calls then ping the owner's linked Telegram chat. No provider key ever reaches the browser.
+
+The `telegram` Edge Function serves the bot webhook (verified by `WEBHOOK_SECRET`, platform JWT off). One user links one chat via a one-time code (`telegram_links`, sha256 only). The bot uses service-role authority but scopes every query to the linked owner and re-verifies row ownership on callbacks. Conversation memory lives in `telegram_history` (last 30 per chat). Login and client-error pings are sent by the frontend through `notify:login` / `notify:error` (errors throttled to one per 5 minutes).
+
 ## Markdown rendering and editor
 
 All Markdown first passes through Marked and DOMPurify with a small tag and attribute allowlist. Checkboxes are disabled. Image sources are validated and receive lazy loading and a no-referrer policy.

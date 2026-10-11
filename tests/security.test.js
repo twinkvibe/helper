@@ -15,6 +15,12 @@ test('Markdown strips active content and permits safe images and checklists',()=
  assert.doesNotMatch(html,/<input[^>]*disabled/);
  assert.doesNotMatch(html,/<script|<iframe|<svg|<form|onerror|onload|javascript:/i);
 });
+test('Markdown file links render with safe URLs only',()=>{
+ const {window}=new JSDOM('');
+ const html=renderMarkdown('[Отчёт.pdf](https://storage.test/u1/report.pdf)\n\n[bad](javascript:alert(1))',window);
+ assert.match(html,/<a href="https:\/\/storage\.test\/u1\/report\.pdf">Отчёт\.pdf<\/a>/);
+ assert.doesNotMatch(html,/javascript:/i);
+});
 test('Public article links use a hash and decode safely',()=>{
  assert.equal(articleHash('komandy-bota'),'#article=komandy-bota');
  assert.equal(publicArticleSlug('#article=komandy-bota'),'komandy-bota');
@@ -62,4 +68,10 @@ test('Content Security Policy in index.html allows blob: in img-src for local im
   assert.ok(imgSrcDirectives.includes('https:'), 'img-src must allow https:');
   assert.ok(imgSrcDirectives.includes('data:'), 'img-src must allow data:');
   assert.ok(imgSrcDirectives.includes('blob:'), 'img-src must allow blob: for URL.createObjectURL');
+  const mediaSrcMatch = csp.match(/media-src\s+([^;]+)/i);
+  assert.ok(mediaSrcMatch, 'CSP must contain media-src directive for dossier video');
+  const mediaSrcDirectives = mediaSrcMatch[1].split(/\s+/).filter(Boolean);
+  assert.ok(mediaSrcDirectives.includes('https:'), 'media-src must allow https: signed storage URLs');
+  assert.ok(mediaSrcDirectives.includes('blob:'), 'media-src must allow blob: for local video preview');
+  assert.ok(!mediaSrcDirectives.includes('*'), 'media-src must not be a wildcard');
 });

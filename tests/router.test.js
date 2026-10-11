@@ -10,6 +10,7 @@ test('Route resolver distinguishes known private routes, login, and unknown 404 
   assert.deepEqual(parseRoute('/tasks'), { type: 'private', page: 'todos', subpath: 'tasks' });
   assert.deepEqual(parseRoute('/tasks/'), { type: 'private', page: 'todos', subpath: 'tasks' });
   assert.deepEqual(parseRoute('/notes'), { type: 'private', page: 'markdown', subpath: 'notes' });
+  assert.deepEqual(parseRoute('/dossier'), { type: 'private', page: 'dossier', subpath: 'dossier' });
   assert.deepEqual(parseRoute('/editor'), { type: 'private', page: 'articles', subpath: 'editor' });
   assert.deepEqual(parseRoute('/account'), { type: 'private', page: 'settings', subpath: 'account' });
   assert.deepEqual(parseRoute('/admin'), { type: 'private', page: 'admin', subpath: 'admin' });
@@ -34,6 +35,7 @@ test('Route resolver distinguishes known private routes, login, and unknown 404 
 test('normalizeSubpath converts root-domain paths to normalized subpaths', () => {
   assert.equal(normalizeSubpath('/'), '');
   assert.equal(normalizeSubpath('/notes'), 'notes');
+  assert.equal(normalizeSubpath('/dossier'), 'dossier');
   assert.equal(normalizeSubpath('/editor'), 'editor');
   assert.equal(normalizeSubpath('/account'), 'account');
   assert.equal(normalizeSubpath('/admin'), 'admin');
@@ -46,6 +48,7 @@ test('normalizeSubpath converts root-domain paths to normalized subpaths', () =>
 
 test('sanitizeNext accepts only known private routes and rejects unsafe or unknown destinations', () => {
   assert.equal(sanitizeNext('/notes'), '/notes');
+  assert.equal(sanitizeNext('/dossier'), '/dossier');
   assert.equal(sanitizeNext('/tasks'), '/tasks');
   assert.equal(sanitizeNext('/account'), '/account');
   assert.equal(sanitizeNext('/editor'), '/editor');
@@ -77,6 +80,7 @@ test('sanitizeNext accepts only known private routes and rejects unsafe or unkno
 test('pageHref produces canonical paths rooted at BASE_URL', () => {
   assert.equal(pageHref('todos'), '/');
   assert.equal(pageHref('markdown'), '/notes');
+  assert.equal(pageHref('dossier'), '/dossier');
   assert.equal(pageHref('articles'), '/editor');
   assert.equal(pageHref('settings'), '/account');
   assert.equal(pageHref('admin'), '/admin');

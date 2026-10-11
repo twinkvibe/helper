@@ -4,7 +4,7 @@ import {
   RefreshCw, CalendarDays, MoreHorizontal, Download, Upload, Trash2,
   FileText, CheckSquare, Settings, Users, LogOut, Newspaper, History,
   Menu, X, RotateCcw, RotateCw, ListOrdered, Table, Minus, Undo2, Redo2, Pilcrow,
-  ArrowLeft, createElement,
+  ArrowLeft, FolderLock, Sparkles, createElement,
 } from 'lucide';
 
 const icons = {
@@ -40,6 +40,7 @@ const icons = {
   upload: Upload,
   trash: Trash2,
   note: FileText,
+  dossier: FolderLock,
   articles: Newspaper,
   adminArticles: Newspaper,
   logs: History,
@@ -52,6 +53,7 @@ const icons = {
   rotateLeft: RotateCcw,
   rotateRight: RotateCw,
   reset: RefreshCw,
+  sparkles: Sparkles,
 };
 
 export function icon(name, label = '') {
